@@ -1,0 +1,6 @@
+# disks: [mount, total_mb, used_mb, avail_mb]
+servers:
+  - { server: PAPIMManager1, env: DC, mem_total_mb: 23949, mem_avail_mb: 13159, swap_used_mb: 3658, load15: 1.33, cores: 4, iowait: 1.01, disks: [["/", 285100, 100872, 171774], ["/boot", 1014, 140, 875]] }
+  - { server: PAPIMPortal, env: DC, mem_total_mb: 23949, mem_avail_mb: 530, swap_used_mb: 6379, load15: 3.44, cores: 8, iowait: 13.60, disks: [["/", 83527, 43470, 35791]] }
+  - { server: PAPIMDB1, env: DC, mem_total_mb: 7823, mem_avail_mb: 3296, load15: 2.67, cores: 4, iowait: 0.01, disks: [["/", 83527, 12549, 66713]] }
+  - { server: PAPIMManager1, env: DRC, mem_total_mb: 15886, mem_avail_mb: 1849, swap_used_mb: 12510, load15: 12.48, cores: 4, iowait: 85.43, disks: [["/", 289743, 42163, 247581]] }

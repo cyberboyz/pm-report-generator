@@ -1,0 +1,15 @@
+{
+  "name": "pm-report",
+  "private": true,
+  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },
+  "dependencies": {
+    "docxtemplater": "^3.47.0",
+    "image-size": "^1.1.1",
+    "next": "^14.2.0",
+    "pizzip": "^3.1.7",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0"
+  }
+}
