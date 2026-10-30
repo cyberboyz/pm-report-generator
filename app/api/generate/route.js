@@ -17,7 +17,7 @@ export async function POST(req) {
       if (m) { const b = await buf_(v); if (b) (envFiles[m[1]] ||= {})[KIND[m[2]]] = b; }
       else if (KIND[name]) { const b = await buf_(v); if (b) legacy[KIND[name]] = b; }
     }
-    const { buf, fileName } = await render({
+    const { buf, fileName, warnings } = await render({
       yamlText: await profile.text(),
       date: f.get("date"), version: f.get("version") || "1.0",
       archPng: await buf_(img),
@@ -27,6 +27,7 @@ export async function POST(req) {
     return new Response(buf, { headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "X-Report-Warnings": encodeURIComponent(JSON.stringify(warnings || [])),
     }});
   } catch (e) {
     return Response.json({ error: e.errors ? e.errors.map(x => x.path.join(".") + ": " + x.message).join("; ") : e.message }, { status: 400 });

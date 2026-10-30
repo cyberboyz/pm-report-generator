@@ -167,7 +167,8 @@ export default function Page() {
       }
       const name = decodeURIComponent((res.headers.get("Content-Disposition") || "").split("''")[1] || "report.docx");
       const url = URL.createObjectURL(await res.blob());
-      setDone({ name, url });
+      let notes = []; try { notes = JSON.parse(decodeURIComponent(res.headers.get("X-Report-Warnings") || "[]")); } catch {}
+      setDone({ name, url, notes });
       Object.assign(document.createElement("a"), { href: url, download: name }).click();
     } catch (ex) { setErr(ex.message); }
     finally { setBusy(false); }
@@ -263,6 +264,9 @@ export default function Page() {
               <Icon d={I.check} /> <span>Downloaded {done.name}</span>
               <button type="button" onClick={() => Object.assign(document.createElement("a"), { href: done.url, download: done.name }).click()}>Download again</button>
             </div>
+          )}
+          {done?.notes?.length > 0 && (
+            <div className="alert warn" role="status"><b>The report was generated, but check these:</b><ul>{done.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
           )}
         </section>
       </form>

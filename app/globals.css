@@ -87,3 +87,4 @@ input[type=date]:focus,input[type=text]:focus{outline:2px solid var(--accent);ou
 .env-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;font-size:14px}
 .env-h span{color:var(--muted);font-size:12px;font-family:ui-monospace,monospace}
 .note{color:var(--muted);font-size:13px;margin:10px 2px 0}
+.alert.warn{display:block;margin-top:10px;font-size:13px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 14px}.alert.warn ul{margin:6px 0 0;padding-left:18px}

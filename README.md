@@ -45,6 +45,9 @@ report-input/
 
 API: the form posts `env.<key>.health|topology|cassandra` (for example `env.old-production.health`). The old fields `health`, `topology`, `cassandra` (no environment) still work and go to the environment marked `current: true` (default: the last one).
 
+## When an upload has a problem
+The report is still generated. A health-check file, topology/Cassandra zip, SSL data or diagram that cannot be read is left out (its tables stay empty) and the form lists what happened and what to fix under "The report was generated, but check these". A server without a CPU count shows its CPU load as `n/a` with no status. Only a profile that is invalid (or a template error) stops generation.
+
 ## What is generated
 - **Release History**: the row for the version being generated gets the report date and the author's first name; `releases:` in the profile is only needed for earlier versions.
 - **Servers** (one heading + table per environment) with RAM + Swap columns. A profile lists them under `environments:`. `current: true` is only needed for old-style uploads without an environment (see Inputs); `data_dir:` optionally sets the environment's folder name.
@@ -58,7 +61,7 @@ API: the form posts `env.<key>.health|topology|cassandra` (for example `env.old-
       servers:
         - { hostname: PAPIMManager1, env: DC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.218.162 }
   ```
-- **Capacity & Performance**: memory/CPU/disk tables and Warning/Critical findings (thresholds in `lib/metrics.js`). The iowait column appears only if the health check contains it (mpstat `%iowait`, vmstat `wa`, top `wa`, or `iowait : x`).
+- **Capacity & Performance**: memory/CPU/disk tables and Warning/Critical findings (thresholds in `lib/metrics.js`). If a health-check file has no `CPU(s):` line (lscpu output missing), the `cpu:` of the same server (hostname + DC/DRC) in the profile is used and the form lists it under "Check these in the report". The iowait column appears only if the health check contains it (mpstat `%iowait`, vmstat `wa`, top `wa`, or `iowait : x`).
 - **Services List** (per environment): built from the health check (listening ports and `ps`): Cassandra, Node Manager, each instance's API Manager / Endpoint / OAuth / Default ports, API Portal, MySQL, Analytics. Empty without a health-check zip.
 - **Cassandra**: node status (`nodetool status`) plus Last Repair from the `last-repair/<DC|DRC>/*.log` files. A log is matched to its node by the `HOST/ip` it prints, else by the health-check host, else (equal numbers of logs and nodes) in order. The value is the newest line mentioning "repair"; if the log has none, its last timestamp is shown.
 - **All environments**: Services List, Capacity and Performance, Topology, Cassandra, Summary and Backup repeat for every environment of the profile (name as sub-heading), each built from that environment's own uploads; an environment without uploads shows empty tables. The findings table (Summary notes) is one list for the whole report, each finding prefixed with its environment when there are several. SSL uses the topologies of all environments.
