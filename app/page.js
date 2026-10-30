@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { parse } from "yaml";
 import { certsFromUpload } from "@/lib/fed";
 import { envKeys, envLabel } from "@/lib/envs";
-import { startDrop, fromInput, expand, packLoose, place, pathOf, PER_ENV } from "@/lib/intake";
+import { startDrop, fromInput, expand, packLoose, place, pathOf, PER_ENV, docxShots } from "@/lib/intake";
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -64,17 +64,27 @@ function Drop({ file, onFile, accept, title, hint, icon, required }) {
 }
 
 /** Several screenshots for one slot: click or drop any number of images; they are shown in the report in this order. */
-function Shots({ list, onChange, title, hint }) {
+function Shots({ list, onChange, onError, title, hint }) {
   const [over, setOver] = useState(false);
   const ref = useRef();
-  const add = (fl) => { const imgs = [...fl].filter((f) => /^image\/(png|jpe?g|gif|bmp)$/.test(f.type) || /\.(png|jpe?g|gif|bmp)$/i.test(f.name)); if (imgs.length) onChange([...list, ...imgs]); };
+  /** Images are added as they are; a Word file (.docx) is opened and its pictures are added in document order. */
+  const add = async (fl) => {
+    const added = [];
+    for (const f of [...fl]) {
+      if (/\.docx$/i.test(f.name) && !f.name.startsWith("~$")) {
+        const pics = docxShots(new Uint8Array(await f.arrayBuffer()), f.name, "");
+        if (pics && pics.length) added.push(...pics.map((p) => p.file)); else onError?.(`No PNG or JPG pictures found in ${f.name}.`);
+      } else if (/^image\/(png|jpe?g|gif|bmp)$/.test(f.type) || /\.(png|jpe?g|gif|bmp)$/i.test(f.name)) added.push(f);
+    }
+    if (added.length) { onError?.(""); onChange([...list, ...added]); }
+  };
   const size = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
   return (
     <div>
       <div className={`drop ${list.length ? "has" : ""} ${over ? "over" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); add(e.dataTransfer.files); }}>
-        <input ref={ref} type="file" multiple accept="image/png,image/jpeg,image/gif,image/bmp,.png,.jpg,.jpeg,.gif,.bmp" aria-label={title} onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
+        <input ref={ref} type="file" multiple accept="image/png,image/jpeg,image/gif,image/bmp,.png,.jpg,.jpeg,.gif,.bmp,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label={title} onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
         <div className="ico"><Icon d={list.length ? I.check : I.chart} /></div>
         <div className="dt"><b>{list.length ? `${list.length} screenshot${list.length === 1 ? "" : "s"}` : title}</b><span>{list.length ? "Click or drop to add more" : hint}</span></div>
         {list.length ? <button type="button" className="rm" aria-label="Remove all screenshots" onClick={(e) => { e.stopPropagation(); onChange([]); }}>×</button> : <span className="tag">Optional</span>}
@@ -220,8 +230,8 @@ export default function Page() {
     <Drop key={kind} file={files[`${key}:${kind}`]} onFile={(f) => setFile(`${key}:${kind}`, f)} accept=".zip" icon={SLOTS[kind].icon}
       title={SLOTS[kind].title} hint={SLOTS[kind].hint} />
   )), (
-    <Shots key="traffic" list={shots[key] || []} onChange={(l) => setShots((o) => ({ ...o, [key]: l }))}
-      title="Traffic screenshots" hint="PNG or JPG, any number · added under this environment's Transactions" />
+    <Shots key="traffic" list={shots[key] || []} onError={setErr} onChange={(l) => setShots((o) => ({ ...o, [key]: l }))}
+      title="Traffic screenshots" hint="PNG, JPG or a Word file (.docx) with screenshots · added under this environment's Transactions" />
   )];
   const nCerts = sslData ? sslData.reduce((n, i) => n + i.certs.length, 0) : 0;
 
