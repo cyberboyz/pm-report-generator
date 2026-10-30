@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { parse } from "yaml";
 import { certsFromUpload } from "@/lib/fed";
 import { envKeys, envLabel } from "@/lib/envs";
-import { startDrop, fromInput, expand, packLoose, place, PER_ENV } from "@/lib/intake";
+import { startDrop, fromInput, expand, packLoose, place, pathOf, PER_ENV } from "@/lib/intake";
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -114,7 +114,7 @@ export default function Page() {
     if (!next.length) return;
     try {
       const inst = [];
-      for (const f of next) inst.push(...certsFromUpload(new Uint8Array(await f.arrayBuffer()), f.name));
+      for (const f of next) inst.push(...certsFromUpload(new Uint8Array(await f.arrayBuffer()), pathOf(f)));
       setSslData(inst);
     } catch (ex) { setSsl([]); setErr(ex.message); }
   }
