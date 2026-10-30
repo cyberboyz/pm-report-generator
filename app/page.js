@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { parse } from "yaml";
 import { certsFromUpload } from "@/lib/fed";
 import { envKeys, envLabel } from "@/lib/envs";
-import { startDrop, fromInput, expand, place, PER_ENV } from "@/lib/intake";
+import { startDrop, fromInput, expand, packLoose, place, PER_ENV } from "@/lib/intake";
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -131,7 +131,8 @@ export default function Page() {
     waiting.current = [];
     const prof = entries.find((e) => /\.ya?ml$/i.test(e.file.name));
     const list = prof ? await pickProfile(prof.file) : envRef.current;
-    const r = place(entries.filter((e) => e !== prof), list.map((e) => e.key));
+    const keys = list.map((e) => e.key);
+    const r = place(await packLoose(entries.filter((e) => e !== prof), keys), keys);
     if (r.shared.arch) setArch(r.shared.arch);
     if (r.shared.ssl.length) await addSsl(r.shared.ssl, true);
     setFiles((o) => ({ ...o, ...r.env }));

@@ -29,7 +29,9 @@ report-input/
     └── cassandra.zip
 ```
 - **Which environment**: a folder named like the environment (`Old Production Environment` → `old-production`: lowercase, without "Environment", hyphens), or the environment in the file name (`new-health-check.zip`, `old-cassandra.zip`; a word only one environment has is enough). Set `data_dir:` on an environment in the profile to use another name. A single-environment profile needs no folder.
+- **Case and spelling don't matter**: `Health Check`, `health-check`, `HEALTH_CHECK`, `HealthCheck`, `Last Repair`, `APIM_Topology`, `OldProduction`, `Old Production Environment`, `old-production-env` are all understood (spaces, hyphens, underscores, camelCase and upper/lower case are ignored); `.ZIP`, `.YAML`, `.PNG` too.
 - **Which data**: by keyword in the file name (`health`, `topology`, `cassandra`, `fed`/`ssl`/`cert`/`backup`), falling back to the optional leading number (3 health, 4 topology, 5 cassandra, 6 SSL). `.yaml/.yml` → profile, images → architecture, `.fed` → SSL.
+- **Unzipped folders work too**: loose files (`.txt`, `.log`, …) inside folders named like `health-check`, `apim-topology` or `cassandra` (also `Last Repair`/`last-repair`) take their type from the nearest such folder and are packed in the browser into one zip per environment and type, keeping `DC/` and `DRC/`. Repeated folder names (`health-check/health-check/`) are fine. `.fed` files are picked up anywhere (e.g. `3-fed-backup/.../*.fed`), and a folder that holds an unzipped `.fed` (`CertStore*.xml`) is packed back into `<folder>.fed`. Together they stay under the ~4.5 MB request limit.
 - A file with several environments in play that doesn't say which one is listed under the drop box as "needs an environment", with a dropdown to assign it (or drag it onto the right slot). Per-environment files dropped before the profile wait until it is loaded.
 
 | Input | Required | Fills |
