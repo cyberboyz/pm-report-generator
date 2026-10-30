@@ -41,9 +41,12 @@ report-input/
 | Health check, per environment (`.zip`, `DC/` and `DRC/` folders, one `.txt` per server) | no | that environment's Capacity & Performance tables, findings, Services List, Summary |
 | APIM topology, per environment (`.zip`, `managedomain --print_topology` output) | no | that environment's Topology, group titles/ports, Backup rows |
 | Cassandra, per environment (`.zip`, `nodetool status` + `Last Repair/<DC\|DRC>/*.log`) | no | that environment's Cassandra table |
+| Traffic screenshots, per environment (PNG/JPG/GIF/BMP, any number) | no | pictures under that environment's Transactions summary table, in upload order |
 | SSL certificates (`.zip` of `.fed` backups, or one `.fed`) | no | SSL/TLS section (read in the browser) |
 
-API: the form posts `env.<key>.health|topology|cassandra` (for example `env.old-production.health`). The old fields `health`, `topology`, `cassandra` (no environment) still work and go to the environment marked `current: true` (default: the last one).
+Traffic screenshots: each environment has a **Traffic screenshots** slot (click or drop several images; remove single ones in the list). In a dropped folder, name the images `traffic*`, `screenshot*`, `transaction*` or `SS_*` (e.g. `old-production/traffic-1.png`), or put them in a `traffic/` / `screenshots/` folder; the environment comes from the folder or file name like the other files. Without such a name an image is the architecture diagram. Images over ~700 KB are scaled down to 1800 px wide in the browser to stay under the request limit, and each is fitted to the page width. An environment without screenshots shows only its summary table.
+
+API: the form posts `env.<key>.health|topology|cassandra|traffic` (for example `env.old-production.health`). The old fields `health`, `topology`, `cassandra` (no environment) still work and go to the environment marked `current: true` (default: the last one).
 
 ## When an upload has a problem
 The report is still generated. A health-check file, topology/Cassandra zip, SSL data or diagram that cannot be read is left out (its tables stay empty) and the form lists what happened and what to fix under "The report was generated, but check these". A server without a CPU count shows its CPU load as `0.31 / n/a` and its CPU status as N/A. Only a profile that is invalid (or a template error) stops generation.
@@ -81,14 +84,14 @@ The report is still generated. A health-check file, topology/Cassandra zip, SSL 
   support_dates:
     - { release: 7.7 February 2026, status: Maintenance, eom: 2027-09-01, eos: 2028-09-01 }
   ```
-- **Transactions**: one sentence per environment in the profile, each followed by an empty summary table (Successes / Blocked / Exceptions / Total) to fill in by hand. The analysis window is three months ending on the 1st of the last month of the report date's quarter (Q1: 1 Dec–1 Mar, Q2: 1 Mar–1 Jun, Q3: 1 Jun–1 Sep, Q4: 1 Sep–1 Dec), month names in Indonesian.
+- **Transactions**: one sentence per environment in the profile, each followed by an empty summary table (Successes / Blocked / Exceptions / Total) to fill in by hand and then that environment's uploaded traffic screenshots (`lib/render.js` `placeShots`, replacing the `[[TXIMG:<environment key>]]` marker added by `scripts/update-template-traffic.py`). The analysis window is three months ending on the 1st of the last month of the report date's quarter (Q1: 1 Dec–1 Mar, Q2: 1 Mar–1 Jun, Q3: 1 Jun–1 Sep, Q4: 1 Sep–1 Dec), month names in Indonesian.
 - Sections not yet modularized (Capacity text, Summary notes, …) still contain the original sample wording.
 
 ## Project layout
 - `app/`: UI (`page.js`, plain CSS in `globals.css` with auto dark mode, `icon.svg`) and the `api/generate` route.
 - `lib/`: `render.js` (assembles the data per environment and fills the template), `envs.js` (environment keys and file-to-environment matching, used by form and server), `intake.js` (browser: folder / zip drop and placement), `ingest.js`, `metrics.js`, `services.js`, `ssl.js`, `groups.js` (SSL group names from `.fed` paths), `patches.js`, `backup.js`, `schema.js` (profile validation).
 - `templates/pm-template.docx`: the report with `{placeholders}`. To use another template, replace the file and keep the placeholder names.
-- `scripts/`: one-off Python scripts that built the template (`make-template.py`, `update-template-*.py` incl. `update-template-env-sections.py` and `update-template-env-services-backup.py` (run in that order), `update-template-cpu-header.py` (CPU Load Average header + table style of the Capacity tables, safe to re-run); run once, optional, and re-running them overwrites manual template edits such as the Transactions section) and `extract-profile.py` (`python3 scripts/extract-profile.py "report.docx" > profile.yaml` rebuilds a profile from a finished report; check it before use).
+- `scripts/`: one-off Python scripts that built the template (`make-template.py`, `update-template-*.py` incl. `update-template-env-sections.py` and `update-template-env-services-backup.py` (run in that order), `update-template-traffic.py` (screenshot marker in Transactions, safe to re-run), `update-template-cpu-header.py` (CPU Load Average header + table style of the Capacity tables, safe to re-run); run once, optional, and re-running them overwrites manual template edits such as the Transactions section) and `extract-profile.py` (`python3 scripts/extract-profile.py "report.docx" > profile.yaml` rebuilds a profile from a finished report; check it before use).
 
 ## TODO
 - [ ] **Automatic parsing from Analytics**: read the API Analytics data (successes, blocked, exceptions, total per environment and period) and fill the Transactions summary tables automatically, instead of leaving them empty. Needs a decision on the input: Analytics export/report upload, or a direct query of the Analytics database/API.

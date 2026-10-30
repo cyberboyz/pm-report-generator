@@ -63,6 +63,44 @@ function Drop({ file, onFile, accept, title, hint, icon, required }) {
   );
 }
 
+/** Several screenshots for one slot: click or drop any number of images; they are shown in the report in this order. */
+function Shots({ list, onChange, title, hint }) {
+  const [over, setOver] = useState(false);
+  const ref = useRef();
+  const add = (fl) => { const imgs = [...fl].filter((f) => /^image\/(png|jpe?g|gif|bmp)$/.test(f.type) || /\.(png|jpe?g|gif|bmp)$/i.test(f.name)); if (imgs.length) onChange([...list, ...imgs]); };
+  const size = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
+  return (
+    <div>
+      <div className={`drop ${list.length ? "has" : ""} ${over ? "over" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); add(e.dataTransfer.files); }}>
+        <input ref={ref} type="file" multiple accept="image/png,image/jpeg,image/gif,image/bmp,.png,.jpg,.jpeg,.gif,.bmp" aria-label={title} onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
+        <div className="ico"><Icon d={list.length ? I.check : I.chart} /></div>
+        <div className="dt"><b>{list.length ? `${list.length} screenshot${list.length === 1 ? "" : "s"}` : title}</b><span>{list.length ? "Click or drop to add more" : hint}</span></div>
+        {list.length ? <button type="button" className="rm" aria-label="Remove all screenshots" onClick={(e) => { e.stopPropagation(); onChange([]); }}>×</button> : <span className="tag">Optional</span>}
+      </div>
+      {list.map((f, i) => (
+        <div key={i} className="need">
+          <span title={f.name}>{i + 1}. {f.name} · {size(f.size)}</span>
+          <button type="button" className="link" aria-label={`Remove ${f.name}`} onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Large screenshots are scaled down in the browser (max 1800 px wide) to stay under the ~4.5 MB request limit; small ones are sent as they are. */
+async function shrink(f) {
+  if (f.size < 700 * 1024 || !/^image\/(png|jpe?g)$/.test(f.type)) return f;
+  try {
+    const bmp = await createImageBitmap(f), k = Math.min(1, 1800 / bmp.width);
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88));
+    return blob && blob.size < f.size ? new File([blob], f.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : f;
+  } catch { return f; }
+}
+
 const SLOTS = {
   health: { icon: I.pulse, title: "Health check", hint: "ZIP · memory, CPU and disk per server (DC/ and DRC/ folders)" },
   topology: { icon: I.topology, title: "APIM topology", hint: "ZIP · managedomain --print_topology output" },
@@ -78,6 +116,7 @@ export default function Page() {
   const [needs, setNeeds] = useState([]); // files that don't say which environment they belong to
   const waiting = useRef([]);             // per-environment files dropped before the profile
   const [nWaiting, setNWaiting] = useState(0);
+  const [shots, setShots] = useState({}); // environment key -> [screenshots of the API traffic], shown in that environment's Transactions section
   const [ssl, setSsl] = useState([]);     // .fed / zip files
   const [sslData, setSslData] = useState(null); // certificates extracted in the browser (keeps the upload small)
   const [date, setDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
@@ -99,6 +138,7 @@ export default function Page() {
       const list = raw.map((e, i) => ({ key: keys[i], label: envLabel(e, i, raw.length) }));
       envRef.current = list; setEnvs(list);
       setFiles((o) => Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k.split(":")[0]))));
+      setShots((o) => Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k))));
       setNeeds([]);
       setInfo({
         customer: y.customer?.name, product: y.customer?.product, env: y.customer?.environment,
@@ -136,9 +176,10 @@ export default function Page() {
     if (r.shared.arch) setArch(r.shared.arch);
     if (r.shared.ssl.length) await addSsl(r.shared.ssl, true);
     setFiles((o) => ({ ...o, ...r.env }));
+    setShots((o) => { const n = { ...o }; for (const [k, l] of Object.entries(r.shots)) n[k] = [...(n[k] || []), ...l]; return n; });
     waiting.current = r.waiting; setNWaiting(r.waiting.length);
     setNeeds((n) => [...(prof ? [] : n), ...r.needs]);
-    const placed = Object.keys(r.env).length + (prof ? 1 : 0) + (r.shared.arch ? 1 : 0) + r.shared.ssl.length;
+    const placed = Object.keys(r.env).length + Object.values(r.shots).reduce((n, l) => n + l.length, 0) + (prof ? 1 : 0) + (r.shared.arch ? 1 : 0) + r.shared.ssl.length;
     const bits = [`${placed} file${placed === 1 ? "" : "s"} placed`];
     if (r.waiting.length) bits.push(`${r.waiting.length} waiting for the profile`);
     if (r.needs.length) bits.push(`${r.needs.length} need an environment`);
@@ -158,6 +199,7 @@ export default function Page() {
       fd.append("profile", profile); fd.append("date", date); fd.append("version", version || "1.0");
       if (arch) fd.append("architecture", arch);
       for (const [k, f] of Object.entries(files)) { const [env, kind] = k.split(":"); fd.append(`env.${env}.${kind}`, f); }
+      for (const [env, list] of Object.entries(shots)) for (const f of list) fd.append(`env.${env}.traffic`, await shrink(f), f.name);
       if (sslData) fd.append("ssl", new Blob([JSON.stringify({ instances: sslData })], { type: "application/json" }), "ssl.json");
       const res = await fetch("/api/generate", { method: "POST", body: fd });
       if (!res.ok) {
@@ -174,10 +216,13 @@ export default function Page() {
     finally { setBusy(false); }
   }
 
-  const slots = (key) => PER_ENV.map((kind) => (
+  const slots = (key) => [...PER_ENV.map((kind) => (
     <Drop key={kind} file={files[`${key}:${kind}`]} onFile={(f) => setFile(`${key}:${kind}`, f)} accept=".zip" icon={SLOTS[kind].icon}
       title={SLOTS[kind].title} hint={SLOTS[kind].hint} />
-  ));
+  )), (
+    <Shots key="traffic" list={shots[key] || []} onChange={(l) => setShots((o) => ({ ...o, [key]: l }))}
+      title="Traffic screenshots" hint="PNG or JPG, any number · added under this environment's Transactions" />
+  )];
   const nCerts = sslData ? sslData.reduce((n, i) => n + i.certs.length, 0) : 0;
 
   return (
@@ -236,7 +281,7 @@ export default function Page() {
             <Drop file={ssl[0] ? { name: ssl.length > 1 ? `${ssl.length} files` : ssl[0].name, size: ssl.reduce((n, f) => n + f.size, 0) } : null} onFile={(f) => addSsl(f ? [f] : [], true)} accept=".zip,.fed" icon={I.cert}
               title="SSL certificates" hint={sslData ? `${nCerts} certificates in ${sslData.length} .fed file(s)` : "ZIP of .fed backups (or one .fed) · read in your browser"} />
           </div>
-          {!profile && <p className="note">Drop the profile to get the health-check, topology and Cassandra slots of each environment.</p>}
+          {!profile && <p className="note">Drop the profile to get the health-check, topology, Cassandra and traffic-screenshot slots of each environment.</p>}
           {envs.length === 1 && <div className="stack" style={{ marginTop: 10 }}>{slots(envs[0].key)}</div>}
           {envs.length > 1 && envs.map((env) => (
             <div key={env.key} className="envbox">
