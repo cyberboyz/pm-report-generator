@@ -1,0 +1,70 @@
+# Customer profile for PT Rintis Sejahtera (Old Production Environment, New Production Environment).
+# Extracted from _Rintis__Preventive_Maintenance_-_Axway_APIM__Production_Environment__-_30-04-2026.docx with scripts/extract-profile.py; check it before use.
+# - environments: one heading + Servers table each; the one marked `current` (default: the last) is the environment
+#   the health-check / topology / cassandra uploads describe
+# - releases is optional: the row for the version you generate is added automatically
+# - backup is optional: without items the table is derived from the topology groups and the API Portal hosts
+customer:
+  name: PT Rintis Sejahtera
+  short: Rintis
+  product: Axway API Management
+  product_short: Axway APIM
+  environment: Production
+author:
+  name: Fattah Azzuhry Rahadian
+  company: PT Multipolar Technology
+current_version: 7.7.20250228   # installed API Gateway / API Portal version; Available Patches lists only newer releases
+doc_title: Preventive Maintenance Report Regular
+contacts:
+  - { name: Omega Palguno Purnomo, position: Department Head, email: omega.purnomo@multipolar.com }
+  - { name: Fattah Azzuhry Rahadian, position: Application Developer, email: fattah.rahadian@multipolar.com }
+# Release History is generated: version + author first name + report date. Only earlier versions need to be listed:
+# releases:
+#   - { version: "1.0", author: Fattah, date: 30 April 2026, description: Initial document }
+distribution:
+  - { name: Omega Palguno Purnomo, org: PT Multipolar Technology }
+  - { name: Heryawan, org: PT Rintis Sejahtera }
+  - { name: Subahri, org: PT Rintis Sejahtera }
+environments:
+  - name: Old Production Environment
+    servers:
+      - { hostname: PAPIMManager1, env: DC, function: API Gateway + Manager, cpu: 6, ram: 48 GB, swap: 16 GB, disk: 300 GB, os: RHEL 7.3, ip: 10.126.218.142 }
+      - { hostname: PAPIMManager2, env: DC, function: API Gateway + Manager, cpu: 6, ram: 48 GB, swap: 16 GB, disk: 300 GB, os: RHEL 7.3, ip: 10.126.218.143 }
+      - { hostname: PAPIMDB1, env: DC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 100 GB, os: RHEL 7.3, ip: ["10.126.214.133 (vpn)", "10.126.214.85"] }
+      - { hostname: PAPIMDB2, env: DC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 100 GB, os: RHEL 7.3, ip: ["10.126.214.134 (vpn)", "10.126.214.86"] }
+      - { hostname: PAPIMDB3, env: DC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 100 GB, os: RHEL 7.3, ip: ["10.126.214.135 (vpn)", "10.126.214.87"] }
+      - { hostname: PAPIMAnalytics, env: DC, function: Analytics, cpu: 8, ram: 32 GB, swap: 64 GB, disk: 580 GB, os: RHEL 7.3, ip: ["10.126.214.136", "10.126.214.88"] }
+      - { hostname: PAPIMManager1, env: DRC, function: API Gateway + Manager, cpu: 4, ram: 16 GB, swap: 16 GB, disk: 300 GB, os: RHEL 7.3, ip: ["10.126.228.142 (ext)", "10.126.222.203 (int)"] }
+      - { hostname: PAPIMManager2, env: DRC, function: API Gateway + Manager, cpu: 4, ram: 16 GB, swap: 16 GB, disk: 300 GB, os: RHEL 7.3, ip: ["10.126.228.143 (ext)", "10.126.222.204 (int)"] }
+      - { hostname: PAPIMDB1, env: DRC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 100 GB, os: RHEL 7.3, ip: ["10.126.222.230 (ext)", "10.126.222.102 (int)"] }
+      - { hostname: PAPIMDB2, env: DRC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 100 GB, os: RHEL 7.3, ip: ["10.126.222.231 (ext)", "10.126.222.103 (int)"] }
+      - { hostname: PAPIMDB3, env: DRC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 100 GB, os: RHEL 7.3, ip: ["10.126.222.232 (ext)", "10.126.222.104 (int)"] }
+      - { hostname: PAPIMAnalytics, env: DRC, function: Analytics, cpu: 8, ram: 32 GB, swap: 64 GB, disk: 600 GB, os: RHEL 7.3, ip: ["10.126.222.233 (ext)", "10.126.222.105 (int)"] }
+  - name: New Production Environment
+    current: true
+    servers:
+      - { hostname: PAPIMManager1, env: DC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.218.162 }
+      - { hostname: PAPIMManager2, env: DC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.218.163 }
+      - { hostname: PAPIMManager3, env: DC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.218.149 }
+      - { hostname: PAPIMDB1, env: DC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: 10.126.240.6 }
+      - { hostname: PAPIMDB2, env: DC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: 10.126.240.7 }
+      - { hostname: PAPIMDB3, env: DC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: 10.126.240.8 }
+      - { hostname: PAPIMAnalytics, env: DC, function: Analytics, cpu: 4, ram: 8 GB, swap: 16 GB, disk: 150 GB, os: RHEL 9.7, ip: 10.126.240.9 }
+      - { hostname: PAPIMPortal, env: DC, function: API Portal, cpu: 4, ram: 24 GB, swap: 16 GB, disk: 150 GB, os: RHEL 9.7, ip: 10.126.218.144 }
+      - { hostname: PAPIMManager1, env: DRC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.228.162 }
+      - { hostname: PAPIMManager2, env: DRC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.228.163 }
+      - { hostname: PAPIMManager3, env: DRC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.228.149 }
+      - { hostname: PAPIMDB1, env: DRC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: ["10.126.223.238", "10.126.223.110"] }
+      - { hostname: PAPIMDB2, env: DRC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: ["10.126.223.239", "10.126.223.111"] }
+      - { hostname: PAPIMDB3, env: DRC, function: Cassandra DB, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: ["10.126.223.240", "10.126.223.112"] }
+      - { hostname: PAPIMAnalytics, env: DRC, function: Analytics, cpu: 4, ram: 8 GB, swap: 0 GB, disk: 150 GB, os: RHEL 9.7, ip: ["10.126.223.237", "10.126.223.109"] }
+      - { hostname: PAPIMPortal, env: DRC, function: API Portal, cpu: 4, ram: 24 GB, swap: 16 GB, disk: 150 GB, os: RHEL 9.7, ip: 10.126.228.161 }
+backup:
+  status: Done
+  items:
+    - category: Policy Studio (.fed)
+      subcategories: ["Group: QRCB", "Group: RTSIST", "Group: RINTIS", "Group: DSP_RINTIS", "Group: DSP"]
+    - category: KPS Data
+      subcategories: ["Group: QRCB", "Group: RTSIST", "Group: RINTIS", "Group: DSP_RINTIS", "Group: DSP"]
+    - category: API Portal MySQL Database
+      subcategories: ["Host: PAPIMPortal"]

@@ -75,3 +75,15 @@ input[type=date]:focus,input[type=text]:focus{outline:2px solid var(--accent);ou
 .alert button{margin-left:auto;border:0;background:none;color:inherit;font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;white-space:nowrap}
 .hint{margin:18px 0 0;text-align:center;color:var(--muted);font-size:12.5px}
 @media(max-width:520px){.grid2,.preview{grid-template-columns:1fr}.card{padding:4px 16px}.wrap{padding-top:28px}}
+
+.bulk-more{display:flex;gap:12px;align-items:center;margin:6px 2px 0;font-size:13px;color:var(--muted)}
+.link{background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font:inherit}
+.link:hover{text-decoration:underline}
+.needs{display:grid;gap:6px;margin-top:10px}
+.need{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
+.need span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.need select{font:inherit;font-size:13px;flex:none}
+.envbox{margin-top:16px}
+.env-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;font-size:14px}
+.env-h span{color:var(--muted);font-size:12px;font-family:ui-monospace,monospace}
+.note{color:var(--muted);font-size:13px;margin:10px 2px 0}
