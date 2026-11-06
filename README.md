@@ -11,20 +11,49 @@ Turns a customer profile (YAML) plus optional server exports into a ready-to-sen
 Edits made on GitHub redeploy automatically. The app itself has no login. To open it without a Vercel login, set Vercel → Settings → Deployment Protection → **Vercel Authentication** to *Disabled* (and use the production domain, not a preview URL). Anyone with the link can then use it, and reports contain IPs and host details, so only share the link with people who should have it. Request bodies are limited to ~4.5 MB, so keep the architecture image small.
 
 ## Inputs
-You can drop every file at once in the top box; each is placed by name: `.yaml/.yml` → profile, images → architecture, `.fed` → SSL, and zips by keyword (`health`, `topology`, `cassandra`, `fed`/`ssl`/`cert`/`backup`), falling back to the leading number (3 health, 4 topology, 5 cassandra, 6 SSL).
+The form adapts to the profile: drop `profile.yaml` first (or together with the rest) and it shows the attachment slots of exactly the environments the profile lists. A profile with one environment looks like a plain form; with several, each environment gets its own **Health check**, **APIM topology** and **Cassandra** slots. The architecture diagram and SSL certificates apply to the whole report and stay single slots. Re-dropping an edited profile updates the slots; files stay where the environment still exists.
+
+**Dropping many files at once** (the top box) accepts loose files, a whole folder (drag it in, or "Choose a folder…") or a zip of that folder (a zip holding a `.yaml` or other zips is unpacked in the browser). Suggested layout:
+```
+report-input/
+├── profile.yaml
+├── architecture.png            (optional, whole report)
+├── ssl-fed-backup.zip          (certificates)
+├── old-production/
+│   ├── health-check.zip        (DC/ and DRC/ folders inside)
+│   ├── apim-topology.zip
+│   └── cassandra.zip
+└── new-production/
+    ├── health-check.zip
+    ├── apim-topology.zip
+    └── cassandra.zip
+```
+- **Which environment**: a folder named like the environment (`Old Production Environment` → `old-production`: lowercase, without "Environment", hyphens), or the environment in the file name (`new-health-check.zip`, `old-cassandra.zip`; a word only one environment has is enough). Set `data_dir:` on an environment in the profile to use another name. A single-environment profile needs no folder.
+- **Case and spelling don't matter**: `Health Check`, `health-check`, `HEALTH_CHECK`, `HealthCheck`, `Last Repair`, `APIM_Topology`, `OldProduction`, `Old Production Environment`, `old-production-env` are all understood (spaces, hyphens, underscores, camelCase and upper/lower case are ignored); `.ZIP`, `.YAML`, `.PNG` too.
+- **Which data**: by keyword in the file name (`health`, `topology`, `cassandra`, `fed`/`ssl`/`cert`/`backup`), falling back to the optional leading number (3 health, 4 topology, 5 cassandra, 6 SSL). `.yaml/.yml` → profile, images → architecture, `.fed` → SSL.
+- **Unzipped folders work too**: loose files (`.txt`, `.log`, …) inside folders named like `health-check`, `apim-topology` or `cassandra` (also `Last Repair`/`last-repair`) take their type from the nearest such folder and are packed in the browser into one zip per environment and type, keeping `DC/` and `DRC/`. Repeated folder names (`health-check/health-check/`) are fine. `.fed` files are picked up anywhere (e.g. `3-fed-backup/.../*.fed`), and a folder that holds an unzipped `.fed` (`CertStore*.xml`) is packed back into `<folder>.fed`. Together they stay under the ~4.5 MB request limit.
+- A file with several environments in play that doesn't say which one is listed under the drop box as "needs an environment", with a dropdown to assign it (or drag it onto the right slot). Per-environment files dropped before the profile wait until it is loaded.
 
 | Input | Required | Fills |
 |---|---|---|
-| Customer profile (`.yaml`) | yes | Cover, contacts, release history, Servers tables, Backup, Transactions headings |
+| Customer profile (`.yaml`) | yes | Cover, contacts, release history, Servers tables, Transactions headings |
 | Architecture diagram (PNG/JPG/GIF/BMP) | no | Architecture section (left empty without it) |
-| Health check (`.zip`, `DC/` and `DRC/` folders, one `.txt` per server) — one per environment | no | Capacity & Performance tables, findings, Services List |
-| APIM topology (`.zip`, `managedomain --print_topology` output) | no | Topology, group titles/ports, Backup rows |
-| Cassandra (`.zip`, `nodetool status` + `Last Repair/<DC\|DRC>/*.log`) | no | Cassandra table |
+| Health check, per environment (`.zip`, `DC/` and `DRC/` folders, one `.txt` per server) | no | that environment's Capacity & Performance tables, findings, Services List, Summary |
+| APIM topology, per environment (`.zip`, `managedomain --print_topology` output) | no | that environment's Topology, group titles/ports, Backup rows |
+| Cassandra, per environment (`.zip`, `nodetool status` + `Last Repair/<DC\|DRC>/*.log`) | no | that environment's Cassandra table |
+| Traffic screenshots, per environment (PNG/JPG/GIF/BMP, any number) | no | pictures under that environment's Transactions summary table, in upload order |
 | SSL certificates (`.zip` of `.fed` backups, or one `.fed`) | no | SSL/TLS section (read in the browser) |
+
+Traffic screenshots: each environment has a **Traffic screenshots** slot (click or drop several images, or a Word `.docx` with screenshots in it: its pictures are added in document order, all to that environment; remove single ones in the list). In a dropped folder, name the images `traffic*`, `screenshot*`, `transaction*` or `SS_*` (e.g. `old-production/traffic-1.png`), or put them in a `traffic/` / `screenshots/` folder; the environment comes from the folder or file name like the other files. A Word file with the screenshots pasted in (e.g. `SS Traffic APIM Old dan New Version.docx`; any name containing `traffic`, `screenshot`, `transaction` or `SS`, any case or separators, loose, in a folder or inside a dropped zip) is opened in the browser and its pictures are placed in document order; the last short line of text above a picture (`Old Version`, `New Production` ...) decides the environment, and pictures whose text does not name an environment (like `SS_Traffic_APIM_Old_dan_New_Version.docx`) are split in equal parts in the order the environments are named in the file name: "Old dan New" with 2 pictures → Old, New; with 4 → Old, Old, New, New; when the number of pictures does not divide evenly they wait under "needs an environment" (`docxShots` in `lib/intake.js`). EMF/WMF/TIFF pictures are skipped, so paste screenshots as PNG/JPG. Without such a name an image is the architecture diagram. Images over ~700 KB are scaled down to 1800 px wide in the browser to stay under the request limit, and each is fitted to the page width. An environment without screenshots shows only its summary table.
+
+API: the form posts `env.<key>.health|topology|cassandra|traffic` (for example `env.old-production.health`). The old fields `health`, `topology`, `cassandra` (no environment) still work and go to the environment marked `current: true` (default: the last one).
+
+## When an upload has a problem
+The report is still generated. A health-check file, topology/Cassandra zip, SSL data or diagram that cannot be read is left out (its tables stay empty) and the form lists what happened and what to fix under "The report was generated, but check these". A server without a CPU count shows its CPU load as `0.31 / n/a` and its CPU status as N/A. Only a profile that is invalid (or a template error) stops generation.
 
 ## What is generated
 - **Release History**: the row for the version being generated gets the report date and the author's first name; `releases:` in the profile is only needed for earlier versions.
-- **Servers** (one heading + table per environment) with RAM + Swap columns. A profile lists them under `environments:`; `current: true` marks the one the uploaded health-check/topology/Cassandra data describe (default: the last).
+- **Servers** (one heading + table per environment) with RAM + Swap columns. A profile lists them under `environments:`. `current: true` is only needed for old-style uploads without an environment (see Inputs); `data_dir:` optionally sets the environment's folder name.
   ```yaml
   environments:
     - name: Old Production Environment
@@ -35,14 +64,14 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
       servers:
         - { hostname: PAPIMManager1, env: DC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.218.162 }
   ```
-- **Capacity & Performance**: memory/CPU/disk tables and Warning/Critical findings (thresholds in `lib/metrics.js`). The iowait column appears only if the health check contains it (mpstat `%iowait`, vmstat `wa`, top `wa`, or `iowait : x`).
-- **Services List**: built from the health check (listening ports and `ps`): Cassandra, Node Manager, each instance's API Manager / Endpoint / OAuth / Default ports, API Portal, MySQL, Analytics. One heading + table per environment, separated by a gap; only the `current` environment is filled, the others show an empty table. Empty without a health-check zip.
-- **Cassandra**: node status (`nodetool status`) plus Last Repair from the `last-repair/<DC|DRC>/*.log` files. A log is matched to its node by the `HOST/ip` it prints, else by the health-check host, else (equal numbers of logs and nodes) in order. The value is the newest line mentioning "repair"; if the log has none, its last timestamp is shown.
-- **Per-environment uploads**: the page shows one group of Health check, APIM topology, Cassandra and SSL (.fed) drops for every environment of the profile (form fields `health_0`, `ssl_1` ...). With *Drop all your files at once*, put the environment's distinguishing word in the file name (e.g. `new-health-check.zip`, `old-fed.zip`); files without one go to the `current` environment. Findings in the final notes list are tagged with the environment name when several have data.
-- **All environments**: Services List, Capacity and Performance, Topology, Cassandra, SSL/TLS and Summary repeat for every environment of the profile (name as sub-heading). Each environment is filled from its own uploads; an environment without uploads shows its heading with empty tables. `current` only decides where un-numbered uploads and the Backup section's topology come from.
-- **Tables** (`lib/tables.js`): every table is post-processed: column widths fit their content (text measured per font size, short columns kept on one line, long ones share the rest, total width kept), and consecutive equal cells in the Server / Zone / Env / IP columns are merged vertically (Services List, Capacity, Servers ...).
+- **Capacity & Performance**: memory/CPU/disk tables and Warning/Critical findings (thresholds in `lib/metrics.js`). If a health-check file has no `CPU(s):` line (lscpu output missing), the `cpu:` of the same server (hostname + DC/DRC) in the profile is used and the form lists it under "Check these in the report". The iowait column appears only if the health check contains it (mpstat `%iowait`, vmstat `wa`, top `wa`, or `iowait : x`).
+- **Services List** (per environment): built from the health check (listening ports and `ps`): Cassandra, Node Manager, each instance's API Manager / Endpoint / OAuth / Default ports, API Portal, MySQL, Analytics. Empty without a health-check zip.
+- **Cassandra**: node status (`nodetool status`) plus Last Repair from the repair logs. DC / DRC come from the status file's name or folder (`dc-nodetool-status.txt`, `DRC/...`), not from the datacenter names inside it (`DC1`, `dc2` are the cluster's own labels); a single file that lists both datacenters is split by name, else first = DC, second = DRC. Owns may be `?` (keyspaces with different replication). Logs are found in any folder (`Last Repair`, `last-repair`, `LastRepair` ...) as `.log` (or `.txt` / `.out` in a repair folder); the file name says DC / DRC and the host in any order or spelling (`dc-papimdb-1.log`, `DRC_PAPIMDB1.LOG`, `last-repair-dc-db1.log`, `papimdb1-drc.log`), or the `DC/` / `DRC/` folder does. A log is matched to its node by the `HOST/ip` it prints, else by the health-check host (spaces, hyphens and case ignored), else (equal numbers of logs and nodes) in order. The value is the newest line mentioning "repair"; if the log has none, its last timestamp is shown; `-` means no log could be tied to that node.
+- **All environments**: Services List, Capacity and Performance, Topology, Cassandra, Summary and Backup repeat for every environment of the profile (name as sub-heading), each built from that environment's own uploads; an environment without uploads shows empty tables. The findings table (Summary notes) is one list for the whole report, each finding prefixed with its environment when there are several. SSL uses the topologies of all environments.
+- **Tables** (`lib/tables.js`): every table is post-processed: column widths fit their content (text measured per font size, short columns kept on one line, long ones share the rest, total width kept); tables with the same headers (the Cassandra, Servers, Services List, Capacity or Summary table of every environment, SSL with-key / without-key, the two patch lists, the one-column Topology lists) are measured together and get identical column widths, and consecutive equal cells in the Server / Zone / Env / IP columns are merged vertically (Services List, Capacity, Servers ...).
 - **SSL/TLS**: only Expired and Expiring-in-3-Months certificates, with-key and without-key in separate tables per group; status is relative to the report date, times in WIB (UTC+7).
-- **Backup** (`lib/backup.js`): Policy Studio and KPS Data per topology group plus API Portal MySQL per portal host. Override with:
+  Group names come from where the `.fed` sits: the directory right below `fed-backup` (`fed-backup/rtsist_1_dc/...`, any spelling of fed-backup and any depth below it), without its `_1_dc` / `_2_drc` ending, so `rtsist_1_dc` and `rtsist_1_drc` become one group `RTSIST`. When the topology knows the instance (with or without `_DC` / `_DRC` in its name) or the group, its own spelling and port are used (`RTSIST (60xx)`); otherwise the name is the folder name in capitals. A single `.fed` picked in the SSL slot has no folder, so its file name is used; drop the folder (or the zip) to keep the group names.
+- **Backup** (`lib/backup.js`, per environment from its own topology): Policy Studio and KPS Data per topology group plus API Portal MySQL per portal host. Override with:
   ```yaml
   backup:
     status: Done
@@ -55,16 +84,18 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
   support_dates:
     - { release: 7.7 February 2026, status: Maintenance, eom: 2027-09-01, eos: 2028-09-01 }
   ```
-- **Transactions**: one sentence per environment in the profile, each followed by an empty summary table (Successes / Blocked / Exceptions / Total) to fill in by hand. The analysis window is three months ending on the 1st of the last month of the report date's quarter (Q1: 1 Dec–1 Mar, Q2: 1 Mar–1 Jun, Q3: 1 Jun–1 Sep, Q4: 1 Sep–1 Dec), month names in Indonesian.
+- **Transactions**: one sentence per environment in the profile, each followed by an empty summary table (Successes / Blocked / Exceptions / Total) to fill in by hand and then that environment's uploaded traffic screenshots (`lib/render.js` `placeShots`, replacing the `[[TXIMG:<environment key>]]` marker added by `scripts/update-template-traffic.py`). The analysis window is three months ending on the 1st of the last month of the report date's quarter (Q1: 1 Dec–1 Mar, Q2: 1 Mar–1 Jun, Q3: 1 Jun–1 Sep, Q4: 1 Sep–1 Dec), month names in Indonesian.
 - Sections not yet modularized (Capacity text, Summary notes, …) still contain the original sample wording.
 
 ## Project layout
 - `app/`: UI (`page.js`, plain CSS in `globals.css` with auto dark mode, `icon.svg`) and the `api/generate` route.
-- `lib/`: `render.js` (assembles the data and fills the template), `ingest.js`, `metrics.js`, `services.js`, `ssl.js`, `patches.js`, `backup.js`, `schema.js` (profile validation).
+- `lib/`: `render.js` (assembles the data per environment and fills the template), `envs.js` (environment keys and file-to-environment matching, used by form and server), `intake.js` (browser: folder / zip drop and placement), `ingest.js`, `metrics.js`, `services.js`, `ssl.js`, `groups.js` (SSL group names from `.fed` paths), `patches.js`, `backup.js`, `schema.js` (profile validation).
 - `templates/pm-template.docx`: the report with `{placeholders}`. To use another template, replace the file and keep the placeholder names.
-- `scripts/`: one-off Python scripts that built the template (`make-template.py`, `update-template-*.py` incl. `update-template-env-sections.py`; run once, optional, and re-running them overwrites manual template edits such as the Transactions section) and `extract-profile.py` (`python3 scripts/extract-profile.py "report.docx" > profile.yaml` rebuilds a profile from a finished report; check it before use).
+- `scripts/`: one-off Python scripts that built the template (`make-template.py`, `update-template-*.py` incl. `update-template-env-sections.py` and `update-template-env-services-backup.py` (run in that order), `update-template-traffic.py` (screenshot marker in Transactions, safe to re-run), `update-template-cpu-header.py` (CPU Load Average header + table style of the Capacity tables, safe to re-run); run once, optional, and re-running them overwrites manual template edits such as the Transactions section) and `extract-profile.py` (`python3 scripts/extract-profile.py "report.docx" > profile.yaml` rebuilds a profile from a finished report; check it before use).
 
 ## TODO
 - [ ] **Automatic parsing from Analytics**: read the API Analytics data (successes, blocked, exceptions, total per environment and period) and fill the Transactions summary tables automatically, instead of leaving them empty. Needs a decision on the input: Analytics export/report upload, or a direct query of the Analytics database/API.
+- [x] Upload health-check / topology / Cassandra data per environment.
+- [ ] Analytics slot per environment (`analytics.zip`) once the Analytics parsing exists.
 - [ ] Modularize the remaining sections that still carry sample data (Capacity text, Summary notes).
 - [ ] Add the Transactions chart back, driven by the parsed Analytics data.
