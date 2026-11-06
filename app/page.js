@@ -76,14 +76,32 @@ function slotOf(name) {
   return { 3: "health", 4: "topology", 5: "cassandra", 6: "ssl" }[lead] || null;
 }
 
+/** Which environment a dropped file belongs to: the environment whose distinguishing word ("old", "new" ...) appears in the file name. */
+function envOfName(name, envs, fallback) {
+  if (envs.length <= 1) return 0;
+  const n = name.toLowerCase();
+  const hit = envs.map((e, i) => {
+    const w = (e.name || "").toLowerCase().replace(/\b(production|environment|env)\b/g, " ").split(/[^a-z0-9]+/).filter(Boolean);
+    return w.length && w.every((t) => new RegExp(`(^|[^a-z0-9])${t}([^a-z0-9]|$)`).test(n)) ? i : -1;
+  }).filter((i) => i >= 0);
+  return hit.length === 1 ? hit[0] : fallback;
+}
+
+const SLOTS = [
+  ["health", "Health check", "ZIP · memory, CPU and disk per server (DC/ and DRC/ folders)", I.pulse],
+  ["topology", "APIM topology", "ZIP · managedomain --print_topology output", I.topology],
+  ["cassandra", "Cassandra", "ZIP · nodetool status + last repair logs", I.db],
+  ["ssl", "SSL certificates", "ZIP of .fed backups (or one .fed) · read in your browser", I.cert],
+];
+
 export default function Page() {
   const [profile, setProfile] = useState(null);
   const [arch, setArch] = useState(null);
-  const [health, setHealth] = useState(null);
-  const [topology, setTopology] = useState(null);
-  const [cassandra, setCassandra] = useState(null);
-  const [ssl, setSsl] = useState(null);
-  const [sslData, setSslData] = useState(null); // certificates extracted in the browser (keeps the upload small)
+  // uploads per environment (index in the profile): { [i]: { health, topology, cassandra, ssl, sslData } }
+  // sslData = certificates extracted in the browser (keeps the upload small)
+  const [per, setPer] = useState({});
+  const setSlot = (i, k, v) => setPer((s) => ({ ...s, [i]: { ...s[i], [k]: v } }));
+  const [envs, setEnvs] = useState([{ name: "" }]); // environments of the profile ({ name, current })
   const [date, setDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
   const [version, setVersion] = useState("1.0");
   const [busy, setBusy] = useState(false);
@@ -93,35 +111,50 @@ export default function Page() {
 
   async function pickProfile(f) {
     setProfile(f); setDone(null); setErr(""); setInfo(null);
-    if (!f) return;
+    if (!f) { setEnvs([{ name: "" }]); return []; }
     try {
       const y = parse(await f.text());
       const envs = y.environments || (y.servers ? [{ servers: y.servers }] : []); // a flat `servers:` list counts as one environment
+      const list = envs.length ? envs.map((e) => ({ name: e.name || "", current: !!e.current })) : [{ name: "" }];
+      setEnvs(list);
       setInfo({
         customer: y.customer?.name, product: y.customer?.product, env: y.customer?.environment,
         servers: envs.reduce((n, e) => n + (e.servers || []).length, 0), contacts: (y.contacts || []).length, envs: envs.length,
       });
-    } catch { setErr("This file doesn't look like valid YAML. Check the formatting and try again."); }
+      return list;
+    } catch { setErr("This file doesn't look like valid YAML. Check the formatting and try again."); return []; }
   }
 
-  async function pickSsl(f) {
-    setSsl(f); setSslData(null); setErr("");
+  async function pickSsl(i, f) {
+    setSlot(i, "ssl", f); setSlot(i, "sslData", null); setErr("");
     if (!f) return;
     try {
       const inst = certsFromUpload(new Uint8Array(await f.arrayBuffer()), f.name);
-      setSslData(inst);
-    } catch (ex) { setSsl(null); setErr(ex.message); }
+      setSlot(i, "sslData", inst);
+    } catch (ex) { setSlot(i, "ssl", null); setErr(ex.message); }
   }
+  const putFile = (i, k, f) => (k === "ssl" ? pickSsl(i, f) : setSlot(i, k, f));
 
   const [bulk, setBulk] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
   async function dropMany(list) {
-    const put = { profile: pickProfile, arch: setArch, health: setHealth, topology: setTopology, cassandra: setCassandra, ssl: pickSsl };
     const taken = new Set(), unknown = [];
-    for (const f of list) {
+    let names = envs;
+    const sorted = [...list].sort((a, b) => (slotOf(b.name) === "profile") - (slotOf(a.name) === "profile")); // the profile first: it tells which environments exist
+    for (const f of sorted) {
       const k = slotOf(f.name);
-      if (!k || taken.has(k)) { unknown.push(f.name); continue; }
-      taken.add(k); await put[k](f);
+      if (!k) { unknown.push(f.name); continue; }
+      if (k === "profile" || k === "arch") {
+        if (taken.has(k)) { unknown.push(f.name); continue; }
+        taken.add(k);
+        if (k === "profile") names = (await pickProfile(f)) || names; else setArch(f);
+        continue;
+      }
+      // health-check, topology, Cassandra, SSL: the environment comes from the file name; without one they go to the current environment
+      const cur = names.findIndex((e) => e.current), fallback = cur >= 0 ? cur : names.length - 1;
+      const i = envOfName(f.name, names, fallback), key = `${i}:${k}`;
+      if (taken.has(key)) { unknown.push(f.name); continue; }
+      taken.add(key); await putFile(i, k, f);
     }
     setBulkMsg(`${taken.size} file${taken.size === 1 ? "" : "s"} placed${unknown.length ? ` · not recognised: ${unknown.join(", ")}` : ""}`);
   }
@@ -132,10 +165,11 @@ export default function Page() {
       const fd = new FormData();
       fd.append("profile", profile); fd.append("date", date); fd.append("version", version || "1.0");
       if (arch) fd.append("architecture", arch);
-      if (health) fd.append("health", health);
-      if (topology) fd.append("topology", topology);
-      if (cassandra) fd.append("cassandra", cassandra);
-      if (sslData) fd.append("ssl", new Blob([JSON.stringify({ instances: sslData })], { type: "application/json" }), "ssl.json");
+      envs.forEach((_, i) => {
+        const u = per[i] || {};
+        for (const [k] of SLOTS) if (k !== "ssl" && u[k]) fd.append(`${k}_${i}`, u[k]);
+        if (u.sslData) fd.append(`ssl_${i}`, new Blob([JSON.stringify({ instances: u.sslData })], { type: "application/json" }), "ssl.json");
+      });
       const res = await fetch("/api/generate", { method: "POST", body: fd });
       if (!res.ok) {
         let msg = "Something went wrong.";
@@ -164,7 +198,7 @@ export default function Page() {
           onDrop={(e) => { e.preventDefault(); setBulk(false); dropMany([...e.dataTransfer.files]); }}>
           <input type="file" multiple aria-label="Drop all files" onChange={(e) => { dropMany([...e.target.files]); e.target.value = ""; }} />
           <div className="ico"><Icon d={I.dl} /></div>
-          <div className="dt"><b>Drop all your files at once</b><span>{bulkMsg || "profile.yaml, architecture image, health-check, apim-topology, cassandra and fed zips are placed by name"}</span></div>
+          <div className="dt"><b>Drop all your files at once</b><span>{bulkMsg || "profile.yaml, architecture image and the health-check, apim-topology, cassandra and fed zips are placed by name; include the environment (e.g. \"new\", \"old\") in the name to pick it"}</span></div>
         </div>
         <section className="sec">
           <div className="sec-h"><span className="num">1</span><h2>Customer profile</h2></div>
@@ -185,15 +219,19 @@ export default function Page() {
           <div className="stack">
             <Drop file={arch} onFile={setArch} accept="image/png,image/jpeg,image/gif,image/bmp,.png,.jpg,.jpeg,.gif,.bmp" icon={I.image}
               title="Architecture diagram" hint="PNG, JPG, GIF or BMP · keep under 4 MB" />
-            <Drop file={health} onFile={setHealth} accept=".zip" icon={I.pulse}
-              title="Health check" hint="ZIP · memory, CPU and disk per server (DC/ and DRC/ folders)" />
-            <Drop file={topology} onFile={setTopology} accept=".zip" icon={I.topology}
-              title="APIM topology" hint="ZIP · managedomain --print_topology output" />
-            <Drop file={cassandra} onFile={setCassandra} accept=".zip" icon={I.db}
-              title="Cassandra" hint="ZIP · nodetool status + last repair logs" />
-            <Drop file={ssl} onFile={pickSsl} accept=".zip,.fed" icon={I.cert}
-              title="SSL certificates" hint={sslData ? `${sslData.reduce((n, i) => n + i.certs.length, 0)} certificates in ${sslData.length} .fed file(s)` : "ZIP of .fed backups (or one .fed) · read in your browser"} />
           </div>
+          {envs.map((env, i) => (
+            <div className="envgrp" key={i} style={{ marginTop: 20 }}>
+              <div className="lbl" style={{ fontWeight: 600, marginBottom: 8 }}>{env.name || "Environment"}{env.current && envs.length > 1 ? " · current" : ""}</div>
+              <div className="stack">
+                {SLOTS.map(([k, title, hint, icon]) => {
+                  const u = per[i] || {};
+                  return <Drop key={k} file={u[k]} onFile={(f) => putFile(i, k, f)} accept={k === "ssl" ? ".zip,.fed" : ".zip"} icon={icon} title={title}
+                    hint={k === "ssl" && u.sslData ? `${u.sslData.reduce((n, x) => n + x.certs.length, 0)} certificates in ${u.sslData.length} .fed file(s)` : hint} />;
+                })}
+              </div>
+            </div>
+          ))}
         </section>
 
         <section className="sec">

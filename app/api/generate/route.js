@@ -7,12 +7,18 @@ export async function POST(req) {
     const profile = f.get("profile");
     const img = f.get("architecture");
     const buf_ = async (x) => (x && x.size ? Buffer.from(await x.arrayBuffer()) : null);
+    // uploads are numbered per environment: health_0, topology_1, cassandra_1, ssl_0 ... (un-numbered ones belong to the current environment)
+    const inputs = {};
+    for (const [key, v] of f.entries()) {
+      const k = key.match(/^(health|topology|cassandra|ssl)(?:_(\d+))?$/);
+      if (!k || !v || typeof v === "string" || !v.size) continue;
+      (inputs[k[2] ?? "current"] ||= {})[k[1]] = k[1] === "ssl" ? (await buf_(v)).toString("utf8") : await buf_(v);
+    }
     const { buf, fileName } = await render({
       yamlText: await profile.text(),
       date: f.get("date"), version: f.get("version") || "1.0",
       archPng: await buf_(img),
-      sslJson: (await buf_(f.get("ssl")))?.toString("utf8") || null,
-      healthZip: await buf_(f.get("health")), topologyZip: await buf_(f.get("topology")), cassandraZip: await buf_(f.get("cassandra")),
+      inputs,
     });
     return new Response(buf, { headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

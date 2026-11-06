@@ -17,7 +17,7 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
 |---|---|---|
 | Customer profile (`.yaml`) | yes | Cover, contacts, release history, Servers tables, Backup, Transactions headings |
 | Architecture diagram (PNG/JPG/GIF/BMP) | no | Architecture section (left empty without it) |
-| Health check (`.zip`, `DC/` and `DRC/` folders, one `.txt` per server) | no | Capacity & Performance tables, findings, Services List |
+| Health check (`.zip`, `DC/` and `DRC/` folders, one `.txt` per server) — one per environment | no | Capacity & Performance tables, findings, Services List |
 | APIM topology (`.zip`, `managedomain --print_topology` output) | no | Topology, group titles/ports, Backup rows |
 | Cassandra (`.zip`, `nodetool status` + `Last Repair/<DC\|DRC>/*.log`) | no | Cassandra table |
 | SSL certificates (`.zip` of `.fed` backups, or one `.fed`) | no | SSL/TLS section (read in the browser) |
@@ -38,7 +38,8 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
 - **Capacity & Performance**: memory/CPU/disk tables and Warning/Critical findings (thresholds in `lib/metrics.js`). The iowait column appears only if the health check contains it (mpstat `%iowait`, vmstat `wa`, top `wa`, or `iowait : x`).
 - **Services List**: built from the health check (listening ports and `ps`): Cassandra, Node Manager, each instance's API Manager / Endpoint / OAuth / Default ports, API Portal, MySQL, Analytics. One heading + table per environment, separated by a gap; only the `current` environment is filled, the others show an empty table. Empty without a health-check zip.
 - **Cassandra**: node status (`nodetool status`) plus Last Repair from the `last-repair/<DC|DRC>/*.log` files. A log is matched to its node by the `HOST/ip` it prints, else by the health-check host, else (equal numbers of logs and nodes) in order. The value is the newest line mentioning "repair"; if the log has none, its last timestamp is shown.
-- **All environments**: Services List, Capacity and Performance, Topology, Cassandra and Summary repeat for every environment of the profile (name as sub-heading). The uploaded health-check / topology / Cassandra data belongs to the `current` environment; the others show their heading with empty tables.
+- **Per-environment uploads**: the page shows one group of Health check, APIM topology, Cassandra and SSL (.fed) drops for every environment of the profile (form fields `health_0`, `ssl_1` ...). With *Drop all your files at once*, put the environment's distinguishing word in the file name (e.g. `new-health-check.zip`, `old-fed.zip`); files without one go to the `current` environment. Findings in the final notes list are tagged with the environment name when several have data.
+- **All environments**: Services List, Capacity and Performance, Topology, Cassandra, SSL/TLS and Summary repeat for every environment of the profile (name as sub-heading). Each environment is filled from its own uploads; an environment without uploads shows its heading with empty tables. `current` only decides where un-numbered uploads and the Backup section's topology come from.
 - **Tables** (`lib/tables.js`): every table is post-processed: column widths fit their content (text measured per font size, short columns kept on one line, long ones share the rest, total width kept), and consecutive equal cells in the Server / Zone / Env / IP columns are merged vertically (Services List, Capacity, Servers ...).
 - **SSL/TLS**: only Expired and Expiring-in-3-Months certificates, with-key and without-key in separate tables per group; status is relative to the report date, times in WIB (UTC+7).
 - **Backup** (`lib/backup.js`): Policy Studio and KPS Data per topology group plus API Portal MySQL per portal host. Override with:
@@ -65,6 +66,5 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
 
 ## TODO
 - [ ] **Automatic parsing from Analytics**: read the API Analytics data (successes, blocked, exceptions, total per environment and period) and fill the Transactions summary tables automatically, instead of leaving them empty. Needs a decision on the input: Analytics export/report upload, or a direct query of the Analytics database/API.
-- [ ] Upload health-check / topology / Cassandra data per environment (today only the `current` environment is filled).
 - [ ] Modularize the remaining sections that still carry sample data (Capacity text, Summary notes).
 - [ ] Add the Transactions chart back, driven by the parsed Analytics data.
