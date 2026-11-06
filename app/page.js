@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { parse } from "yaml";
-import { certsFromUpload } from "@/lib/fed";
-import { envKeys, envLabel } from "@/lib/envs";
-import { startDrop, fromInput, expand, packLoose, place, pathOf, PER_ENV, docxShots } from "@/lib/intake";
+import PizZip from "pizzip";
+import { certsFromUpload, certsFromCertStore } from "@/lib/fed";
+import { classify, collectDrop, collectInput, fedInstances } from "@/lib/bulk";
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -63,143 +63,106 @@ function Drop({ file, onFile, accept, title, hint, icon, required }) {
   );
 }
 
-/** Several screenshots for one slot: click or drop any number of images; they are shown in the report in this order. */
-function Shots({ list, onChange, onError, title, hint }) {
-  const [over, setOver] = useState(false);
-  const ref = useRef();
-  /** Images are added as they are; a Word file (.docx) is opened and its pictures are added in document order. */
-  const add = async (fl) => {
-    const added = [];
-    for (const f of [...fl]) {
-      if (/\.docx$/i.test(f.name) && !f.name.startsWith("~$")) {
-        const pics = docxShots(new Uint8Array(await f.arrayBuffer()), f.name, "");
-        if (pics && pics.length) added.push(...pics.map((p) => p.file)); else onError?.(`No PNG or JPG pictures found in ${f.name}.`);
-      } else if (/^image\/(png|jpe?g|gif|bmp)$/.test(f.type) || /\.(png|jpe?g|gif|bmp)$/i.test(f.name)) added.push(f);
-    }
-    if (added.length) { onError?.(""); onChange([...list, ...added]); }
-  };
-  const size = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
-  return (
-    <div>
-      <div className={`drop ${list.length ? "has" : ""} ${over ? "over" : ""}`}
-        onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); add(e.dataTransfer.files); }}>
-        <input ref={ref} type="file" multiple accept="image/png,image/jpeg,image/gif,image/bmp,.png,.jpg,.jpeg,.gif,.bmp,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label={title} onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
-        <div className="ico"><Icon d={list.length ? I.check : I.chart} /></div>
-        <div className="dt"><b>{list.length ? `${list.length} screenshot${list.length === 1 ? "" : "s"}` : title}</b><span>{list.length ? "Click or drop to add more" : hint}</span></div>
-        {list.length ? <button type="button" className="rm" aria-label="Remove all screenshots" onClick={(e) => { e.stopPropagation(); onChange([]); }}>×</button> : <span className="tag">Optional</span>}
-      </div>
-      {list.map((f, i) => (
-        <div key={i} className="need">
-          <span title={f.name}>{i + 1}. {f.name} · {size(f.size)}</span>
-          <button type="button" className="link" aria-label={`Remove ${f.name}`} onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Large screenshots are scaled down in the browser (max 1800 px wide) to stay under the ~4.5 MB request limit; small ones are sent as they are. */
-async function shrink(f) {
-  if (f.size < 700 * 1024 || !/^image\/(png|jpe?g)$/.test(f.type)) return f;
-  try {
-    const bmp = await createImageBitmap(f), k = Math.min(1, 1800 / bmp.width);
-    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88));
-    return blob && blob.size < f.size ? new File([blob], f.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : f;
-  } catch { return f; }
-}
-
-const SLOTS = {
-  health: { icon: I.pulse, title: "Health check", hint: "ZIP · memory, CPU and disk per server (DC/ and DRC/ folders)" },
-  topology: { icon: I.topology, title: "APIM topology", hint: "ZIP · managedomain --print_topology output" },
-  cassandra: { icon: I.db, title: "Cassandra", hint: "ZIP · nodetool status + last repair logs" },
-};
+const SLOTS = [
+  ["health", "Health check", "ZIP · memory, CPU and disk per server (DC/ and DRC/ folders)", I.pulse],
+  ["topology", "APIM topology", "ZIP · managedomain --print_topology output", I.topology],
+  ["cassandra", "Cassandra", "ZIP · nodetool status + last repair logs", I.db],
+  ["ssl", "SSL certificates", "ZIP of .fed backups (or one .fed) · read in your browser", I.cert],
+];
 
 export default function Page() {
   const [profile, setProfile] = useState(null);
   const [arch, setArch] = useState(null);
-  const [files, setFiles] = useState({}); // "<environment key>:<kind>" -> File, kind = health | topology | cassandra
-  const [envs, setEnvs] = useState([]);   // [{ key, label }] from the profile: the form shows slots for exactly these
-  const envRef = useRef([]);              // same list, readable inside async handlers
-  const [needs, setNeeds] = useState([]); // files that don't say which environment they belong to
-  const waiting = useRef([]);             // per-environment files dropped before the profile
-  const [nWaiting, setNWaiting] = useState(0);
-  const [shots, setShots] = useState({}); // environment key -> [screenshots of the API traffic], shown in that environment's Transactions section
-  const [ssl, setSsl] = useState([]);     // .fed / zip files
-  const [sslData, setSslData] = useState(null); // certificates extracted in the browser (keeps the upload small)
+  // uploads per environment (index in the profile): { [i]: { health, topology, cassandra, ssl, sslData } }
+  // sslData = certificates extracted in the browser (keeps the upload small)
+  const [per, setPer] = useState({});
+  const setSlot = (i, k, v) => setPer((s) => ({ ...s, [i]: { ...s[i], [k]: v } }));
+  const [envs, setEnvs] = useState([{ name: "" }]); // environments of the profile ({ name, current })
   const [date, setDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
   const [version, setVersion] = useState("1.0");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(null);
   const [info, setInfo] = useState(null);
-  const setFile = (key, f) => setFiles((o) => { const n = { ...o }; if (f) n[key] = f; else delete n[key]; return n; });
 
-  /** Reads the profile and, from it, the environments: slots follow the profile. Files stay where the environment key still exists. */
   async function pickProfile(f) {
     setProfile(f); setDone(null); setErr(""); setInfo(null);
-    if (!f) { envRef.current = []; setEnvs([]); return []; }
+    if (!f) { setEnvs([{ name: "" }]); return []; }
     try {
       const y = parse(await f.text());
-      const raw = y.environments || (y.servers ? [{ servers: y.servers }] : []); // a flat `servers:` list counts as one environment
-      const keys = envKeys(raw);
-      const list = raw.map((e, i) => ({ key: keys[i], label: envLabel(e, i, raw.length) }));
-      envRef.current = list; setEnvs(list);
-      setFiles((o) => Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k.split(":")[0]))));
-      setShots((o) => Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k))));
-      setNeeds([]);
+      const envs = y.environments || (y.servers ? [{ servers: y.servers }] : []); // a flat `servers:` list counts as one environment
+      const list = envs.length ? envs.map((e) => ({ name: e.name || "", current: !!e.current })) : [{ name: "" }];
+      setEnvs(list);
       setInfo({
         customer: y.customer?.name, product: y.customer?.product, env: y.customer?.environment,
-        servers: raw.reduce((n, e) => n + (e.servers || []).length, 0), contacts: (y.contacts || []).length, envs: raw.length,
+        servers: envs.reduce((n, e) => n + (e.servers || []).length, 0), contacts: (y.contacts || []).length, envs: envs.length,
       });
       return list;
     } catch { setErr("This file doesn't look like valid YAML. Check the formatting and try again."); return []; }
   }
 
-  async function addSsl(list, replace) {
-    const next = replace ? list : [...ssl, ...list];
-    setSsl(next); setSslData(null); setErr("");
-    if (!next.length) return;
+  async function pickSsl(i, f) {
+    setSlot(i, "ssl", f); setSlot(i, "sslData", null); setErr("");
+    if (!f) return;
     try {
-      const inst = [];
-      for (const f of next) inst.push(...certsFromUpload(new Uint8Array(await f.arrayBuffer()), pathOf(f)));
-      setSslData(inst);
-    } catch (ex) { setSsl([]); setErr(ex.message); }
+      const inst = certsFromUpload(new Uint8Array(await f.arrayBuffer()), f.name);
+      setSlot(i, "sslData", inst);
+    } catch (ex) { setSlot(i, "ssl", null); setErr(ex.message); }
   }
+  const putFile = (i, k, f) => (k === "ssl" ? pickSsl(i, f) : setSlot(i, k, f));
 
   const [bulk, setBulk] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
-  const folderRef = useRef();
-  const envName = (k) => envRef.current.find((e) => e.key === k)?.label || k;
+  const folderInput = useRef();
 
-  /** entries: [{ file, path }] from a drop of files, a folder, or a zipped folder */
-  async function dropMany(raw) {
-    setErr("");
-    const entries = [...(await expand(raw)), ...waiting.current];
-    waiting.current = [];
-    const prof = entries.find((e) => /\.ya?ml$/i.test(e.file.name));
-    const list = prof ? await pickProfile(prof.file) : envRef.current;
-    const keys = list.map((e) => e.key);
-    const r = place(await packLoose(entries.filter((e) => e !== prof), keys), keys);
-    if (r.shared.arch) setArch(r.shared.arch);
-    if (r.shared.ssl.length) await addSsl(r.shared.ssl, true);
-    setFiles((o) => ({ ...o, ...r.env }));
-    setShots((o) => { const n = { ...o }; for (const [k, l] of Object.entries(r.shots)) n[k] = [...(n[k] || []), ...l]; return n; });
-    waiting.current = r.waiting; setNWaiting(r.waiting.length);
-    setNeeds((n) => [...(prof ? [] : n), ...r.needs]);
-    const placed = Object.keys(r.env).length + Object.values(r.shots).reduce((n, l) => n + l.length, 0) + (prof ? 1 : 0) + (r.shared.arch ? 1 : 0) + r.shared.ssl.length;
-    const bits = [`${placed} file${placed === 1 ? "" : "s"} placed`];
-    if (r.waiting.length) bits.push(`${r.waiting.length} waiting for the profile`);
-    if (r.needs.length) bits.push(`${r.needs.length} need an environment`);
-    if (r.unknown.length) bits.push(`not recognised: ${r.unknown.join(", ")}`);
-    setBulkMsg(bits.join(" · "));
+  /** items: [{ path, file }] from dropped files/folders. Each is placed by its path: <environment folder>/<health-check|apim-topology|cassandra|fed>/... */
+  async function dropMany(items) {
+    const skipped = new Set();
+    let names = envs;
+    const profileItem = items.find((it) => classify(it.path, []).slot === "profile");
+    if (profileItem) names = (await pickProfile(profileItem.file)) || names;
+    const arch = items.find((it) => classify(it.path, []).slot === "arch"); // an image outside the health-check / topology / ... folders
+    if (arch) setArch(arch.file);
+    const cur = names.findIndex((e) => e.current), fallback = cur >= 0 ? cur : names.length - 1;
+    const rows = items.map((it) => ({ it, c: classify(it.path, names) })).filter((r) => ["health", "topology", "cassandra", "ssl"].includes(r.c.slot));
+    const anyMatched = rows.some((r) => r.c.env !== null);
+    const plan = new Map(); // "env:slot" -> [{ rel, file }]
+    for (const { it, c } of rows) {
+      if (c.env === null && c.stray && anyMatched) { skipped.add(c.parent); continue; } // e.g. a FICT folder next to New / Old Production
+      const i = c.env ?? (names.length === 1 ? 0 : fallback), key = `${i}:${c.slot}`;
+      (plan.get(key) || plan.set(key, []).get(key)).push({ rel: c.rel, file: it.file });
+    }
+    const placed = [];
+    for (const [key, list] of plan) {
+      const [i, slot] = key.split(":"), label = (names[i]?.name || "Environment").replace(/\s*environment\s*$/i, "");
+      try {
+        const ok = await placeSlot(+i, slot, list);
+        if (ok) placed.push(`${label}: ${slot === "ssl" ? "SSL" : slot}`);
+      } catch (ex) { setErr(`${label} ${slot}: ${ex.message}`); }
+    }
+    const extra = [...(arch ? ["diagram"] : []), ...(profileItem ? ["profile"] : [])];
+    // what each environment did not get, so an empty folder (e.g. Old Production/fed) is visible
+    const missing = names.map((e, i) => {
+      const lack = ["health", "topology", "cassandra", "ssl"].filter((k) => !plan.has(`${i}:${k}`)).map((k) => (k === "ssl" ? "fed" : k));
+      return lack.length && lack.length < 4 ? `${(e.name || "Environment").replace(/\s*environment\s*$/i, "")}: no ${lack.join(", ")}` : "";
+    }).filter(Boolean);
+    setBulkMsg([...extra, ...placed].join(" · ") + (missing.length ? ` · not found → ${missing.join("; ")}` : "") + (skipped.size ? ` · skipped (no matching environment): ${[...skipped].join(", ")}` : "") || "nothing recognised — name folders like New Production/health-check/DC/…");
   }
-  function assign(i, key) {
-    const n = needs[i];
-    setFile(`${key}:${n.kind}`, n.file);
-    setNeeds(needs.filter((_, j) => j !== i));
+
+  /** Puts the files found for one environment + slot into its drop: a single zip/.fed is used as is, loose files are zipped here, and a .fed folder is read in place. */
+  async function placeSlot(i, slot, list) {
+    const ready = list.filter((x) => /\.(zip|fed)$/i.test(x.rel) && !x.rel.includes("/"));
+    if (slot === "ssl") {
+      const insts = await fedInstances(list, { fromXml: certsFromCertStore, fromArchive: certsFromUpload });
+      setSlot(i, "ssl", { name: `${insts.length} instance${insts.length === 1 ? "" : "s"} from folder`, size: list.reduce((n, x) => n + x.file.size, 0) });
+      setSlot(i, "sslData", insts);
+      return true;
+    }
+    if (ready.length && ready.length === list.length) { setSlot(i, slot, ready[0].file); return true; }
+    const zip = new PizZip();
+    for (const x of list) zip.file(x.rel, await x.file.arrayBuffer());
+    setSlot(i, slot, new File([zip.generate({ type: "uint8array", compression: "DEFLATE" })], `${slot}.zip`, { type: "application/zip" }));
+    return true;
   }
 
   async function submit(e) {
@@ -208,9 +171,11 @@ export default function Page() {
       const fd = new FormData();
       fd.append("profile", profile); fd.append("date", date); fd.append("version", version || "1.0");
       if (arch) fd.append("architecture", arch);
-      for (const [k, f] of Object.entries(files)) { const [env, kind] = k.split(":"); fd.append(`env.${env}.${kind}`, f); }
-      for (const [env, list] of Object.entries(shots)) for (const f of list) fd.append(`env.${env}.traffic`, await shrink(f), f.name);
-      if (sslData) fd.append("ssl", new Blob([JSON.stringify({ instances: sslData })], { type: "application/json" }), "ssl.json");
+      envs.forEach((_, i) => {
+        const u = per[i] || {};
+        for (const [k] of SLOTS) if (k !== "ssl" && u[k]) fd.append(`${k}_${i}`, u[k]);
+        if (u.sslData) fd.append(`ssl_${i}`, new Blob([JSON.stringify({ instances: u.sslData })], { type: "application/json" }), "ssl.json");
+      });
       const res = await fetch("/api/generate", { method: "POST", body: fd });
       if (!res.ok) {
         let msg = "Something went wrong.";
@@ -219,21 +184,11 @@ export default function Page() {
       }
       const name = decodeURIComponent((res.headers.get("Content-Disposition") || "").split("''")[1] || "report.docx");
       const url = URL.createObjectURL(await res.blob());
-      let notes = []; try { notes = JSON.parse(decodeURIComponent(res.headers.get("X-Report-Warnings") || "[]")); } catch {}
-      setDone({ name, url, notes });
+      setDone({ name, url });
       Object.assign(document.createElement("a"), { href: url, download: name }).click();
     } catch (ex) { setErr(ex.message); }
     finally { setBusy(false); }
   }
-
-  const slots = (key) => [...PER_ENV.map((kind) => (
-    <Drop key={kind} file={files[`${key}:${kind}`]} onFile={(f) => setFile(`${key}:${kind}`, f)} accept=".zip" icon={SLOTS[kind].icon}
-      title={SLOTS[kind].title} hint={SLOTS[kind].hint} />
-  )), (
-    <Shots key="traffic" list={shots[key] || []} onError={setErr} onChange={(l) => setShots((o) => ({ ...o, [key]: l }))}
-      title="Traffic screenshots" hint="PNG, JPG or a Word file (.docx) with screenshots · added under this environment's Transactions" />
-  )];
-  const nCerts = sslData ? sslData.reduce((n, i) => n + i.certs.length, 0) : 0;
 
   return (
     <main className="wrap">
@@ -246,29 +201,13 @@ export default function Page() {
       <form className="card" onSubmit={submit}>
         <div className={`drop bulk ${bulk ? "over" : ""}`} style={{ margin: "16px 0 4px" }}
           onDragOver={(e) => { e.preventDefault(); setBulk(true); }} onDragLeave={() => setBulk(false)}
-          onDrop={(e) => { e.preventDefault(); setBulk(false); startDrop(e.dataTransfer).then(dropMany); }}>
-          <input type="file" multiple aria-label="Drop all files" onChange={(e) => { dropMany(fromInput(e.target.files)); e.target.value = ""; }} />
+          onDrop={(e) => { e.preventDefault(); setBulk(false); collectDrop(e.dataTransfer).then(dropMany); }}>
+          <input type="file" multiple aria-label="Drop all files" onChange={(e) => { dropMany(collectInput(e.target.files)); e.target.value = ""; }} />
           <div className="ico"><Icon d={I.dl} /></div>
-          <div className="dt"><b>Drop all your files at once</b><span>{bulkMsg || "Files, a report-input/ folder or its zip: the profile first, then each file is placed by name and environment folder"}</span></div>
+          <div className="dt"><b>Drop all your files at once</b><span>{bulkMsg || "files or whole folders: profile.yaml, then <environment>/health-check, apim-topology, cassandra, fed (zips or extracted)"}</span></div>
+          <input ref={folderInput} type="file" webkitdirectory="" directory="" multiple hidden onChange={(e) => { dropMany(collectInput(e.target.files)); e.target.value = ""; }} />
+          <button type="button" className="rm" style={{ width: "auto", padding: "0 10px", position: "relative", zIndex: 2 }} onClick={() => folderInput.current.click()}>Choose folder</button>
         </div>
-        <div className="bulk-more">
-          <button type="button" className="link" onClick={() => folderRef.current.click()}>Choose a folder…</button>
-          <input ref={folderRef} type="file" webkitdirectory="" multiple hidden onChange={(e) => { dropMany(fromInput(e.target.files)); e.target.value = ""; }} />
-          {nWaiting > 0 && <span>{nWaiting} file{nWaiting === 1 ? "" : "s"} waiting for the profile</span>}
-        </div>
-        {needs.length > 0 && (
-          <div className="needs" role="group" aria-label="Files that need an environment">
-            {needs.map((n, i) => (
-              <div key={i} className="need">
-                <span title={n.path}>{n.file.name}</span>
-                <select value="" aria-label={`Environment for ${n.file.name}`} onChange={(e) => e.target.value && assign(i, e.target.value)}>
-                  <option value="">Which environment?</option>
-                  {envs.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-                </select>
-              </div>
-            ))}
-          </div>
-        )}
         <section className="sec">
           <div className="sec-h"><span className="num">1</span><h2>Customer profile</h2></div>
           <Drop file={profile} onFile={pickProfile} accept=".yaml,.yml" required icon={I.doc}
@@ -288,15 +227,17 @@ export default function Page() {
           <div className="stack">
             <Drop file={arch} onFile={setArch} accept="image/png,image/jpeg,image/gif,image/bmp,.png,.jpg,.jpeg,.gif,.bmp" icon={I.image}
               title="Architecture diagram" hint="PNG, JPG, GIF or BMP · keep under 4 MB" />
-            <Drop file={ssl[0] ? { name: ssl.length > 1 ? `${ssl.length} files` : ssl[0].name, size: ssl.reduce((n, f) => n + f.size, 0) } : null} onFile={(f) => addSsl(f ? [f] : [], true)} accept=".zip,.fed" icon={I.cert}
-              title="SSL certificates" hint={sslData ? `${nCerts} certificates in ${sslData.length} .fed file(s)` : "ZIP of .fed backups (or one .fed) · read in your browser"} />
           </div>
-          {!profile && <p className="note">Drop the profile to get the health-check, topology, Cassandra and traffic-screenshot slots of each environment.</p>}
-          {envs.length === 1 && <div className="stack" style={{ marginTop: 10 }}>{slots(envs[0].key)}</div>}
-          {envs.length > 1 && envs.map((env) => (
-            <div key={env.key} className="envbox">
-              <div className="env-h"><b>{env.label}</b><span>{env.key}/</span></div>
-              <div className="stack">{slots(env.key)}</div>
+          {envs.map((env, i) => (
+            <div className="envgrp" key={i} style={{ marginTop: 20 }}>
+              <div className="lbl" style={{ fontWeight: 600, marginBottom: 8 }}>{env.name || "Environment"}{env.current && envs.length > 1 ? " · current" : ""}</div>
+              <div className="stack">
+                {SLOTS.map(([k, title, hint, icon]) => {
+                  const u = per[i] || {};
+                  return <Drop key={k} file={u[k]} onFile={(f) => putFile(i, k, f)} accept={k === "ssl" ? ".zip,.fed" : ".zip"} icon={icon} title={title}
+                    hint={k === "ssl" && u.sslData ? `${u.sslData.reduce((n, x) => n + x.certs.length, 0)} certificates in ${u.sslData.length} .fed file(s)` : hint} />;
+                })}
+              </div>
             </div>
           ))}
         </section>
@@ -319,9 +260,6 @@ export default function Page() {
               <Icon d={I.check} /> <span>Downloaded {done.name}</span>
               <button type="button" onClick={() => Object.assign(document.createElement("a"), { href: done.url, download: done.name }).click()}>Download again</button>
             </div>
-          )}
-          {done?.notes?.length > 0 && (
-            <div className="alert warn" role="status"><b>The report was generated, but check these:</b><ul>{done.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
           )}
         </section>
       </form>
