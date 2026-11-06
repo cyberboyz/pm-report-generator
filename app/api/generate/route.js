@@ -14,7 +14,7 @@ export async function POST(req) {
       if (!k || !v || typeof v === "string" || !v.size) continue;
       (inputs[k[2] ?? "current"] ||= {})[k[1]] = k[1] === "ssl" ? (await buf_(v)).toString("utf8") : await buf_(v);
     }
-    const { buf, fileName } = await render({
+    const { buf, fileName, warnings } = await render({
       yamlText: await profile.text(),
       date: f.get("date"), version: f.get("version") || "1.0",
       archPng: await buf_(img),
@@ -23,6 +23,7 @@ export async function POST(req) {
     return new Response(buf, { headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "X-Report-Warnings": encodeURIComponent(JSON.stringify(warnings.slice(0, 20))).slice(0, 6000), // files that were skipped (shown on the page)
     }});
   } catch (e) {
     return Response.json({ error: e.errors ? e.errors.map(x => x.path.join(".") + ": " + x.message).join("; ") : e.message }, { status: 400 });

@@ -67,7 +67,7 @@ const SLOTS = [
   ["health", "Health check", "ZIP · memory, CPU and disk per server (DC/ and DRC/ folders)", I.pulse],
   ["topology", "APIM topology", "ZIP · managedomain --print_topology output", I.topology],
   ["cassandra", "Cassandra", "ZIP · nodetool status + last repair logs", I.db],
-  ["ssl", "SSL certificates", "ZIP of .fed backups (or one .fed) · read in your browser", I.cert],
+  ["ssl", "TLS/SSL certificates", "ZIP of .fed backups, extracted fed folders or one .fed · read in your browser", I.cert],
 ];
 
 export default function Page() {
@@ -83,6 +83,7 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(null);
+  const [warn, setWarn] = useState([]); // input files the generator skipped
   const [info, setInfo] = useState(null);
 
   async function pickProfile(f) {
@@ -126,11 +127,11 @@ export default function Page() {
     const cur = names.findIndex((e) => e.current), fallback = cur >= 0 ? cur : names.length - 1;
     const rows = items.map((it) => ({ it, c: classify(it.path, names) })).filter((r) => ["health", "topology", "cassandra", "ssl"].includes(r.c.slot));
     const anyMatched = rows.some((r) => r.c.env !== null);
-    const plan = new Map(); // "env:slot" -> [{ rel, file }]
+    const plan = new Map(); // "env:slot" -> [{ rel, path, file }]
     for (const { it, c } of rows) {
       if (c.env === null && c.stray && anyMatched) { skipped.add(c.parent); continue; } // e.g. a FICT folder next to New / Old Production
       const i = c.env ?? (names.length === 1 ? 0 : fallback), key = `${i}:${c.slot}`;
-      (plan.get(key) || plan.set(key, []).get(key)).push({ rel: c.rel, file: it.file });
+      (plan.get(key) || plan.set(key, []).get(key)).push({ rel: c.rel, path: it.path, file: it.file });
     }
     const placed = [];
     for (const [key, list] of plan) {
@@ -160,13 +161,13 @@ export default function Page() {
     }
     if (ready.length && ready.length === list.length) { setSlot(i, slot, ready[0].file); return true; }
     const zip = new PizZip();
-    for (const x of list) zip.file(x.rel, await x.file.arrayBuffer());
+    for (const x of list) zip.file(x.path.replace(/\\/g, "/"), await x.file.arrayBuffer()); // full dropped path, so messages show e.g. New Production/health-check/DC/x.txt
     setSlot(i, slot, new File([zip.generate({ type: "uint8array", compression: "DEFLATE" })], `${slot}.zip`, { type: "application/zip" }));
     return true;
   }
 
   async function submit(e) {
-    e.preventDefault(); setErr(""); setDone(null); setBusy(true);
+    e.preventDefault(); setErr(""); setDone(null); setWarn([]); setBusy(true);
     try {
       const fd = new FormData();
       fd.append("profile", profile); fd.append("date", date); fd.append("version", version || "1.0");
@@ -183,6 +184,7 @@ export default function Page() {
         throw new Error(msg);
       }
       const name = decodeURIComponent((res.headers.get("Content-Disposition") || "").split("''")[1] || "report.docx");
+      try { setWarn(JSON.parse(decodeURIComponent(res.headers.get("X-Report-Warnings") || "[]"))); } catch {}
       const url = URL.createObjectURL(await res.blob());
       setDone({ name, url });
       Object.assign(document.createElement("a"), { href: url, download: name }).click();
@@ -206,7 +208,7 @@ export default function Page() {
           <div className="ico"><Icon d={I.dl} /></div>
           <div className="dt"><b>Drop all your files at once</b><span>{bulkMsg || "files or whole folders: profile.yaml, then <environment>/health-check, apim-topology, cassandra, fed (zips or extracted)"}</span></div>
           <input ref={folderInput} type="file" webkitdirectory="" directory="" multiple hidden onChange={(e) => { dropMany(collectInput(e.target.files)); e.target.value = ""; }} />
-          <button type="button" className="rm" style={{ width: "auto", padding: "0 10px", position: "relative", zIndex: 2 }} onClick={() => folderInput.current.click()}>Choose folder</button>
+          <button type="button" className="pick" onClick={() => folderInput.current.click()}>Choose folder</button>
         </div>
         <section className="sec">
           <div className="sec-h"><span className="num">1</span><h2>Customer profile</h2></div>
@@ -255,6 +257,9 @@ export default function Page() {
             {busy ? <><span className="spin" />Generating…</> : <><Icon d={I.dl} />Generate report</>}
           </button>
           {err && <div className="alert err" role="alert">{err}</div>}
+          {warn.length > 0 && (
+            <div className="alert err" role="status"><div><b>Skipped {warn.length} file{warn.length === 1 ? "" : "s"}:</b>{warn.map((w, i) => <div key={i}>{w}</div>)}</div></div>
+          )}
           {done && (
             <div className="alert ok" role="status">
               <Icon d={I.check} /> <span>Downloaded {done.name}</span>

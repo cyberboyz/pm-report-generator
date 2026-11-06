@@ -75,3 +75,6 @@ input[type=date]:focus,input[type=text]:focus{outline:2px solid var(--accent);ou
 .alert button{margin-left:auto;border:0;background:none;color:inherit;font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;white-space:nowrap}
 .hint{margin:18px 0 0;text-align:center;color:var(--muted);font-size:12.5px}
 @media(max-width:520px){.grid2,.preview{grid-template-columns:1fr}.card{padding:4px 16px}.wrap{padding-top:28px}}
+
+.pick{position:relative;z-index:2;height:30px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.pick:hover{border-color:var(--accent);color:var(--accent)}
