@@ -49,7 +49,7 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
 - **Services List**: built from the health check (listening ports from `netstat -tlnp` or `ss -tlnp`, and `ps`). One heading + table per environment, each filled from its own health check; an environment without one shows an empty table. Which port is which service is configurable (`lib/services.js`, `DEFAULT_SERVICES`): the defaults follow the APIM convention (instance ports `xx75` API Manager, `xx65` API Endpoint API Manager, `xx89` OAuth, `xx80` default endpoint; Node Manager 8090; Cassandra 7000/7001/7199/9042; MySQL 3306; Analytics 8040; Simulator 10009; API Portal 443). **A customer whose ports differ lists its own under `services:` in the profile** (tried before the defaults):
   ```yaml
   services:
-    other_ports: instances        # a port no rule names: instances = list it as "[INSTANCE] Port 8085" (default), all = list every port, none = leave out
+    other_ports: none             # a port no rule names: none = leave out but warn (default), instances = list it as "[INSTANCE] Port 8085", all = list every port
     instance_ports:               # ports of API Gateway instances -> "[QRCB_1_DC] <name>"
       - { ends_with: "81", name: API Endpoint Internal }   # any instance port ending in 81
       - { port: 8443, name: API Endpoint HTTPS }          # or one exact port (a list is allowed)

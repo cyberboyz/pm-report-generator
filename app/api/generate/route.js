@@ -23,7 +23,7 @@ export async function POST(req) {
     return new Response(buf, { headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-      "X-Report-Warnings": encodeURIComponent(JSON.stringify(warnings.slice(0, 20))).slice(0, 6000), // files that were skipped (shown on the page)
+      "X-Report-Warnings": encodeURIComponent(JSON.stringify(warnings.slice(0, 40))).slice(0, 6000), // files that were skipped (shown on the page)
     }});
   } catch (e) {
     return Response.json({ error: e.errors ? e.errors.map(x => x.path.join(".") + ": " + x.message).join("; ") : e.message }, { status: 400 });
