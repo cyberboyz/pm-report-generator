@@ -78,7 +78,7 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
         items:
           - { category: KPS Data, subcategories: ["Group: FICT"] }
   ```
-- **Available Patches** (`lib/patches.js`): refreshed on every generation from the Axway release-notes URLs (falls back to the quarterly schedule if docs.axway.com is unreachable). With `current_version: 7.7.20250228` set in the profile, both the patch lists and the Supported API Gateway table show only the installed release (marked `(installed)`) and newer ones; without it, all releases are listed. EoM/EoS dates for newest releases come from the profile once Axway announces them:
+- **Available Patches** (`lib/patches.js`): refreshed on every generation from the Axway release-notes URLs (falls back to the quarterly schedule if docs.axway.com is unreachable). With `current_version: 7.7.20250228` set in the profile, both the patch lists and the Supported API Gateway table show only the installed release (marked `(installed)`) and newer ones; without it, all releases are listed. Status, End of Maintenance and End of Support come from the Axway Product Life Cycle table pasted in `lib/support-data.js` (it is behind the support login, so it can't be fetched): when Axway announces new releases or dates, paste the portal's table over that text, once for all customers. A release missing there stays empty to fill in by hand. A single customer can still override a release in the profile:
   ```yaml
   support_dates:
     - { release: 7.7 February 2026, status: Maintenance, eom: 2027-09-01, eos: 2028-09-01 }
