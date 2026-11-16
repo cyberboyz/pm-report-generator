@@ -46,20 +46,37 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
         - { hostname: PAPIMManager1, env: DC, function: API Gateway + Manager, cpu: 6, ram: 24 GB, swap: 16 GB, disk: 350 GB, os: RHEL 9.7, ip: 10.126.218.162 }
   ```
 - **Capacity & Performance**: memory/CPU/disk tables and Warning/Critical findings (thresholds in `lib/metrics.js`). The iowait column appears only if the health check contains it (mpstat `%iowait`, vmstat `wa`, top `wa`, or `iowait : x`).
-- **Services List**: built from the health check (listening ports and `ps`): Cassandra, Node Manager, each instance's API Manager / Endpoint / OAuth / Default ports, API Portal, MySQL, Analytics. One heading + table per environment, separated by a normal gap; only the `current` environment is filled, the others show an empty table. Empty without a health-check zip.
+- **Services List**: built from the health check (listening ports from `netstat -tlnp` or `ss -tlnp`, and `ps`). One heading + table per environment, each filled from its own health check; an environment without one shows an empty table. Which port is which service is configurable (`lib/services.js`, `DEFAULT_SERVICES`): the defaults follow the APIM convention (instance ports `xx75` API Manager, `xx65` API Endpoint API Manager, `xx89` OAuth, `xx80` default endpoint; Node Manager 8090; Cassandra 7000/7001/7199/9042; MySQL 3306; Analytics 8040; Simulator 10009; API Portal 443). **A customer whose ports differ lists its own under `services:` in the profile** (tried before the defaults):
+  ```yaml
+  services:
+    other_ports: instances        # a port no rule names: instances = list it as "[INSTANCE] Port 8085" (default), all = list every port, none = leave out
+    instance_ports:               # ports of API Gateway instances -> "[QRCB_1_DC] <name>"
+      - { ends_with: "81", name: API Endpoint Internal }   # any instance port ending in 81
+      - { port: 8443, name: API Endpoint HTTPS }          # or one exact port (a list is allowed)
+    ports:                        # fixed ports of other software; process = regex on the process name
+      - { port: 9999, process: customagent, name: Custom Agent, order: 65 }
+    # replace_defaults: true      # use only the rules written here
+  ```
+  Nothing is dropped silently any more: ports that still cannot be named produce a warning on the page ("listening port(s) are not in the Services List: ...", "instance port(s) ... are listed as Port NNNN") saying what to add to the profile. A missing row is therefore not a bug in the report but a port the rules do not know yet.
 - **Cassandra**: node status (`nodetool status`) plus Last Repair from the `last-repair/<DC|DRC>/*.log` files. nodetool datacenter names are mapped to log type (`DC1` → `dc-*`, `DRC1` → `drc-*`; when there is no DRC datacenter, `DC2` is treated as the DR site → `drc-*`). Logs may be named `<dc|drc>-<num>.log` (`dc-1.log`, `drc-2.log`): number N is the node whose health-check host name ends in N, else the Nth node by IP. Otherwise a log is matched to its node by the `HOST/ip` it prints, else by the health-check host, else (equal numbers of logs and nodes) in order. The value is the newest line mentioning "repair"; if the log has none, its last timestamp is shown.
 - **Unreadable health-check files** (e.g. a DB host whose output has no `CPU(s)` line) are skipped instead of stopping the report; the page lists them afterwards with their full path (`New Production/health-check/DC/file.txt`). Browsers never reveal the absolute disk path, so the path starts at the folder you dropped.
 - **Per-environment uploads**: the page shows one group of Health check, APIM topology, Cassandra and SSL (.fed) drops for every environment of the profile (form fields `health_0`, `ssl_1` ...). *Drop all your files at once* (or *Choose folder*) accepts files and whole folders and places each by its path (`lib/bulk.js`): `<Environment folder>/health-check/DC|DRC/*.txt`, `apim-topology/`, `cassandra/` (with `Last Repair/`), `fed/` (extracted `<instance>/<id>/META-INF/CertStore.xml`, `.fed` files or a zip). The folder must be named like the environment (`New Production` matches `New Production Environment`); folders such as `analytics` or `apigw-monitoring` are ignored and a folder matching no environment (e.g. `FICT` next to New/Old Production) is skipped. Loose zips work too: put the environment's word in the name (`new-health-check.zip`); files with no environment go to the `current` environment. Findings in the final notes list are tagged with the environment name when several have data.
-- **All environments**: Services List, Capacity and Performance, Topology, Cassandra, SSL/TLS and Summary repeat for every environment of the profile (name as sub-heading). Each environment is filled from its own uploads; an environment without uploads shows its heading with empty tables. `current` only decides where un-numbered uploads and the Backup section's topology come from.
+- **All environments**: Services List, Capacity and Performance, Topology, Cassandra, SSL/TLS, Backup and Summary repeat for every environment of the profile (name as sub-heading). Each environment is filled from its own uploads; an environment without uploads shows its heading with empty tables. `current` only decides where un-numbered uploads come from and which environment the profile-wide `backup.items` apply to.
 - **Tables** (`lib/tables.js`): every table is post-processed: column widths fit their content (text measured per font size, short columns kept on one line, long ones share the rest, total width kept), and consecutive equal cells in the Server / Zone / Env / IP columns are merged vertically (Services List, Capacity, Servers ...).
 - **TLS/SSL Certificates**: only Expired and Expiring-in-3-Months certificates, with-key and without-key in separate tables per group; status is relative to the report date, times in WIB (UTC+7).
-- **Backup** (`lib/backup.js`): Policy Studio and KPS Data per topology group plus API Portal MySQL per portal host. Override with:
+- **Backup** (`lib/backup.js`): one heading + table **per environment of the profile** (Old, New, FICT ...), like the Services List. Each table lists Policy Studio and KPS Data per group (from that environment's own APIM topology, else from the `(GROUP)` the health-check `ps` prints) plus API Portal MySQL per portal host of that environment's servers. A category with nothing known yet keeps one empty row to fill in by hand; API Portal is only listed for environments that have a portal. Override with:
   ```yaml
   backup:
-    status: Done
-    items:
+    status: Done                    # Status column of every row (empty = fill in by hand)
+    items:                          # applies to the `current` environment only
       - category: Policy Studio (.fed)
         subcategories: ["Group: QRCB", "Group: RTSIST"]
+  environments:
+    - name: FICT Environment
+      backup:                       # optional: this environment's own items / status
+        status: In Progress
+        items:
+          - { category: KPS Data, subcategories: ["Group: FICT"] }
   ```
 - **Available Patches** (`lib/patches.js`): refreshed on every generation from the Axway release-notes URLs (falls back to the quarterly schedule if docs.axway.com is unreachable). With `current_version: 7.7.20250228` set in the profile, both the patch lists and the Supported API Gateway table show only the installed release (marked `(installed)`) and newer ones; without it, all releases are listed. EoM/EoS dates for newest releases come from the profile once Axway announces them:
   ```yaml
@@ -73,7 +90,7 @@ You can drop every file at once in the top box; each is placed by name: `.yaml/.
 - `app/`: UI (`page.js`, plain CSS in `globals.css` with auto dark mode, `icon.svg`) and the `api/generate` route.
 - `lib/`: `render.js` (assembles the data and fills the template), `ingest.js`, `metrics.js`, `services.js`, `ssl.js`, `patches.js`, `backup.js`, `schema.js` (profile validation).
 - `templates/pm-template.docx`: the report with `{placeholders}`. To use another template, replace the file and keep the placeholder names.
-- `scripts/`: one-off Python scripts that built the template (`make-template.py`, `update-template-*.py` incl. `update-template-env-sections.py`; run once, optional, and re-running them overwrites manual template edits such as the Transactions section) and `extract-profile.py` (`python3 scripts/extract-profile.py "report.docx" > profile.yaml` rebuilds a profile from a finished report; check it before use).
+- `scripts/`: one-off Python scripts that built the template (`make-template.py`, `update-template-*.py` incl. `update-template-env-sections.py` and `update-template-backup-envs.py` (Backup per environment; replaces the obsolete `update-template-env-services-backup.py`); run once, optional, and re-running them overwrites manual template edits such as the Transactions section) and `extract-profile.py` (`python3 scripts/extract-profile.py "report.docx" > profile.yaml` rebuilds a profile from a finished report; check it before use).
 
 ## TODO
 - [ ] **Automatic parsing from Analytics**: read the API Analytics data (successes, blocked, exceptions, total per environment and period) and fill the Transactions summary tables automatically, instead of leaving them empty. Needs a decision on the input: Analytics export/report upload, or a direct query of the Analytics database/API.

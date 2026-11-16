@@ -3,7 +3,14 @@
 # - environments: one heading + Servers table each; the one marked `current` (default: the last) is the environment
 #   the health-check / topology / cassandra uploads describe
 # - releases is optional: the row for the version you generate is added automatically
-# - backup is optional: without items the table is derived from the topology groups and the API Portal hosts
+# - backup is optional and is listed for every environment: without items each table is derived from that environment's topology groups and API Portal hosts.
+#   `items` here apply to the `current` environment; other environments can have their own `backup:` inside the environment
+# - services is optional: customer-specific ports for the Services List (see README), e.g.
+#   services:
+#     instance_ports:
+#       - { ends_with: "81", name: API Endpoint Internal }
+#     ports:
+#       - { port: 9999, process: customagent, name: Custom Agent }
 customer:
   name: PT Rintis Sejahtera
   short: Rintis

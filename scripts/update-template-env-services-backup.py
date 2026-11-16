@@ -1,4 +1,5 @@
-"""Services List and Backup repeat for every environment in the profile (like Capacity, Topology, Cassandra, Summary).
+"""OBSOLETE: superseded by update-template-backup-envs.py (this one wraps Backup in {#env_blocks}, which no longer matches the template).
+Services List and Backup repeat for every environment in the profile (like Capacity, Topology, Cassandra, Summary).
 The Services List table and the Backup block are wrapped in {#env_blocks} ... {/env_blocks} and start with the environment name
 (omitted for an unnamed one). Needs update-template-env-sections.py to have been run first (it adds the name heading).
 Run once, optional:  python3 scripts/update-template-env-services-backup.py templates/pm-template.docx
