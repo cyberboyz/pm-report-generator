@@ -1,6 +1,6 @@
 """Services List repeats for every environment in the profile (like Capacity, Topology, Cassandra and Summary):
-the table is wrapped in {#svc_blocks} ... {/svc_blocks}, starts with the environment name and is followed by a spacer paragraph
-so consecutive environments never touch (and Word never fuses two tables into one).
+the table is wrapped in {#svc_blocks} ... {/svc_blocks}, starts with the environment name ; the next environment's name heading (space before) separates
+consecutive tables, with no empty spacer paragraph that could land alone at the top of a page.
 Run once, optional:  python3 scripts/update-template-services-envs.py templates/pm-template.docx
 """
 import re, sys, zipfile, os
@@ -10,13 +10,12 @@ text = lambda x: re.sub(r'<[^>]+>', '', x).strip()
 tag = lambda t: f'<w:p><w:r><w:t>{t}</w:t></w:r></w:p>'
 NAME = ('<w:p><w:pPr><w:keepNext/><w:spacing w:before="360" w:after="120"/><w:rPr><w:b/><w:bCs/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:pPr>'
         '<w:r><w:rPr><w:b/><w:bCs/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t>{name}</w:t></w:r></w:p>')
-SPACER = '<w:p><w:pPr><w:spacing w:before="0" w:after="240"/></w:pPr></w:p>'
 
 def convert(x):
     if '{#svc_blocks}' in x: return x
     h = next(m for m in PARA.finditer(x) if 'w:val="Heading1"' in m.group(0) and text(m.group(0)) == "Services List")
     t0 = x.index('<w:tbl>', h.end()); t1 = x.index('</w:tbl>', t0) + len('</w:tbl>')
-    block = tag('{#svc_blocks}') + tag('{#has_name}') + NAME + tag('{/has_name}') + x[t0:t1] + SPACER + tag('{/svc_blocks}')
+    block = tag('{#svc_blocks}') + tag('{#has_name}') + NAME + tag('{/has_name}') + x[t0:t1] + tag('{/svc_blocks}')
     return x[:t0] + block + x[t1:]
 
 tmp = SRC + '.tmp'
